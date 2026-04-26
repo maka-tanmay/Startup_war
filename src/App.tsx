@@ -91,7 +91,7 @@ export default function App() {
 
   // Check if Supabase is configured
   useEffect(() => {
-    const isMock = supabase.supabaseUrl === 'YOUR_SUPABASE_URL';
+    const isMock = !import.meta.env.VITE_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL === 'YOUR_SUPABASE_URL';
     setIsConfigured(!isMock);
     
     if (isMock) {
