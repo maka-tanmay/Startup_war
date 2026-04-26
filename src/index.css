@@ -1,0 +1,76 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-main: #eff1f5; 
+  --card-bg: #ffffff;
+  --slate-900: #0f172a;
+  --slate-600: #475569;
+  --slate-400: #94a3b8;
+  --slate-200: #e2e8f0;
+}
+
+body {
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--bg-main);
+  color: var(--slate-900);
+  font-family: 'Outfit', sans-serif;
+  overflow-x: hidden;
+}
+
+/* --- LOGICAL UNDERLINE NAVIGATION --- */
+
+.nav-container {
+  @apply relative flex items-center gap-10 px-4 h-full;
+}
+
+.nav-tab {
+  @apply relative h-full flex items-center text-[13px] font-bold uppercase tracking-widest transition-all cursor-pointer;
+}
+
+.nav-tab-active {
+  @apply text-slate-900;
+}
+
+.nav-tab-inactive {
+  @apply text-slate-400 hover:text-slate-600;
+}
+
+.nav-underline {
+  @apply absolute bottom-0 left-0 right-0 h-[3px] bg-[#0f172a] rounded-full z-50;
+}
+
+/* --- REFINED ARCHITECTURAL SYSTEM (COMPACT) --- */
+
+.panel-solid {
+  background: var(--card-bg);
+  border: 1.5px solid var(--slate-900);
+  box-shadow: 4px 4px 0px rgba(15, 23, 42, 0.05);
+  border-radius: 1rem;
+}
+
+.btn-primary {
+  @apply px-6 py-2.5 bg-[#0f172a] text-white rounded-lg font-bold uppercase tracking-widest text-[11px] transition-all flex items-center justify-center gap-3 shadow hover:bg-black hover:shadow-md active:scale-95 disabled:bg-slate-200 disabled:text-slate-400;
+}
+
+.btn-secondary {
+  @apply px-5 py-2.5 border-1.5 border-slate-900 text-slate-900 bg-white rounded-lg font-bold uppercase tracking-widest text-[10px] transition-all hover:bg-slate-900 hover:text-white active:scale-95;
+}
+
+.font-heading {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.bg-pattern-dots {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+  background-size: 25px 25px;
+  opacity: 0.25;
+}
