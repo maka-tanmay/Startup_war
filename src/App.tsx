@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { participants, Idea, Participant, initialIdeas, categories, marketSizes } from './data/mockData';
+import { Participant, Idea, initialIdeas, categories, marketSizes } from './data/mockData';
 import { supabase } from './lib/supabase';
-import { Rocket, Users, ChevronRight, Star, Trophy, Target, DollarSign, Clock, CheckCircle2, ChevronLeft, Zap, Sparkles, BrainCircuit, TrendingUp, Search, ShieldAlert, BadgeCheck, Coins, LayoutGrid, ArrowRight, MousePointer2, MessageSquare, Info, X, Lightbulb, BarChart3, Workflow, Plus, Trash2, Database, Save, RotateCcw, Wifi, WifiOff, Globe, AlertTriangle, ExternalLink, Terminal } from 'lucide-react';
+import { Rocket, Users, ChevronRight, Star, Trophy, Target, DollarSign, Clock, CheckCircle2, ChevronLeft, Zap, Sparkles, BrainCircuit, TrendingUp, Search, ShieldAlert, BadgeCheck, Coins, LayoutGrid, ArrowRight, MousePointer2, MessageSquare, Info, X, Lightbulb, BarChart3, Workflow, Plus, Trash2, Database, Save, RotateCcw, Wifi, WifiOff, Globe, AlertTriangle, ExternalLink, Terminal, UserPlus, Palette } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -85,6 +85,7 @@ export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('LOBBY');
   const [activeParticipant, setActiveParticipant] = useState<Participant | null>(null);
   const [ideas, setIdeas] = useState<Idea[]>([]);
+  const [participants, setParticipants] = useState<Participant[]>([]);
   const [votingIndex, setVotingIndex] = useState(0);
   const [dbConnected, setDbConnected] = useState(false);
   const [isConfigured, setIsConfigured] = useState(false);
@@ -95,9 +96,17 @@ export default function App() {
     setIsConfigured(!isMock);
     
     if (isMock) {
-      // Fallback to local storage if not configured
-      const saved = localStorage.getItem('spark-tank-ideas-local');
-      if (saved) setIdeas(JSON.parse(saved));
+      const savedIdeas = localStorage.getItem('spark-tank-ideas-local');
+      if (savedIdeas) setIdeas(JSON.parse(savedIdeas));
+      const savedParts = localStorage.getItem('spark-tank-participants-local');
+      if (savedParts) setParticipants(JSON.parse(savedParts));
+      else setParticipants([
+        { id: '1', name: 'Tanmay', color: '#ef4444', ideasLogged: 0, mood: '🔥' },
+        { id: '2', name: 'Taher', color: '#3b82f6', ideasLogged: 0, mood: '🤔' },
+        { id: '3', name: 'Siddhesh', color: '#10b981', ideasLogged: 0, mood: '🚀' },
+        { id: '4', name: 'Hasnain', color: '#f59e0b', ideasLogged: 0, mood: '💡' },
+        { id: '5', name: 'Ahmed', color: '#8b5cf6', ideasLogged: 0, mood: '🌈' },
+      ]);
     }
   }, []);
 
@@ -105,43 +114,89 @@ export default function App() {
   useEffect(() => {
     if (!isConfigured) return;
 
-    const fetchIdeas = async () => {
+    const fetchData = async () => {
       try {
-        const { data, error } = await supabase.from('ideas').select('*');
-        if (error) throw error;
-        setIdeas(data || []);
+        const { data: ideasData } = await supabase.from('ideas').select('*');
+        const { data: partsData } = await supabase.from('participants').select('*');
+        
+        setIdeas(ideasData || []);
+        if (partsData && partsData.length > 0) {
+           setParticipants(partsData.sort((a, b) => a.id.localeCompare(b.id)));
+        } else {
+           // Initialize default participants if table is empty
+           const defaults = [
+            { id: '1', name: 'Tanmay', color: '#ef4444', ideasLogged: 0, mood: '🔥' },
+            { id: '2', name: 'Taher', color: '#3b82f6', ideasLogged: 0, mood: '🤔' },
+            { id: '3', name: 'Siddhesh', color: '#10b981', ideasLogged: 0, mood: '🚀' },
+            { id: '4', name: 'Hasnain', color: '#f59e0b', ideasLogged: 0, mood: '💡' },
+            { id: '5', name: 'Ahmed', color: '#8b5cf6', ideasLogged: 0, mood: '🌈' },
+          ];
+          await supabase.from('participants').insert(defaults);
+          setParticipants(defaults);
+        }
         setDbConnected(true);
       } catch (err) {
         setDbConnected(false);
       }
     };
 
-    fetchIdeas();
+    fetchData();
 
-    const channel = supabase
-      .channel('schema-db-changes')
+    // Ideas Subscription
+    const ideasChannel = supabase
+      .channel('ideas-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ideas' }, (payload) => {
-        if (payload.eventType === 'INSERT') {
-          setIdeas(prev => [...prev, payload.new as Idea]);
-        } else if (payload.eventType === 'UPDATE') {
-          setIdeas(prev => prev.map(id => id.id === payload.new.id ? payload.new as Idea : id));
-        } else if (payload.eventType === 'DELETE') {
-          setIdeas(prev => prev.filter(id => id.id !== payload.old.id));
-        }
+        if (payload.eventType === 'INSERT') setIdeas(prev => [...prev, payload.new as Idea]);
+        else if (payload.eventType === 'UPDATE') setIdeas(prev => prev.map(id => id.id === payload.new.id ? payload.new as Idea : id));
+        else if (payload.eventType === 'DELETE') setIdeas(prev => prev.filter(id => id.id !== payload.old.id));
+      })
+      .subscribe();
+
+    // Participants Subscription
+    const partsChannel = supabase
+      .channel('parts-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'participants' }, (payload) => {
+        if (payload.eventType === 'INSERT') setParticipants(prev => [...prev, payload.new as Participant].sort((a, b) => a.id.localeCompare(b.id)));
+        else if (payload.eventType === 'UPDATE') setParticipants(prev => prev.map(p => p.id === payload.new.id ? payload.new as Participant : p).sort((a, b) => a.id.localeCompare(b.id)));
+        else if (payload.eventType === 'DELETE') setParticipants(prev => prev.filter(p => p.id !== payload.old.id));
       })
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(ideasChannel);
+      supabase.removeChannel(partsChannel);
     };
   }, [isConfigured]);
 
-  // Persist local ideas if not configured
+  // Persist local if not configured
   useEffect(() => {
     if (!isConfigured) {
       localStorage.setItem('spark-tank-ideas-local', JSON.stringify(ideas));
+      localStorage.setItem('spark-tank-participants-local', JSON.stringify(participants));
     }
-  }, [ideas, isConfigured]);
+  }, [ideas, participants, isConfigured]);
+
+  const addMember = async () => {
+    const newMember: Participant = {
+      id: Math.random().toString(36).substr(2, 9),
+      name: `Guest ${participants.length + 1}`,
+      color: '#' + Math.floor(Math.random()*16777215).toString(16),
+      mood: '✨',
+      ideasLogged: 0
+    };
+
+    setParticipants(prev => [...prev, newMember]);
+    if (isConfigured) {
+      await supabase.from('participants').insert([newMember]);
+    }
+  };
+
+  const updateMember = async (updated: Participant) => {
+    setParticipants(prev => prev.map(p => p.id === updated.id ? updated : p));
+    if (isConfigured) {
+      await supabase.from('participants').update(updated).eq('id', updated.id);
+    }
+  };
 
   const addIdea = async (ownerId: string) => {
     const newIdea: Idea = {
@@ -163,33 +218,23 @@ export default function App() {
       feasibility: 5
     };
     
-    // Optimistic Update
     setIdeas(prev => [...prev, newIdea]);
-
     if (isConfigured) {
-      const { error } = await supabase.from('ideas').insert([newIdea]);
-      if (error) {
-        console.error("Sync Failed:", error);
-        // If it failed, we could remove it, but let's keep it simple for the session
-      }
+      await supabase.from('ideas').insert([newIdea]);
     }
   };
 
   const removeIdea = async (id: string) => {
-    // Optimistic Update
     setIdeas(prev => prev.filter(i => i.id !== id));
-
     if (isConfigured) {
-      const { error } = await supabase.from('ideas').delete().eq('id', id);
-      if (error) console.error("Sync Failed:", error);
+      await supabase.from('ideas').delete().eq('id', id);
     }
   };
 
   const updateIdea = async (updatedIdea: Idea) => {
     setIdeas(prev => prev.map(id => id.id === updatedIdea.id ? updatedIdea : id));
     if (isConfigured) {
-      const { error } = await supabase.from('ideas').update(updatedIdea).eq('id', updatedIdea.id);
-      if (error) console.error("Sync Update Failed:", error);
+      await supabase.from('ideas').update(updatedIdea).eq('id', updatedIdea.id);
     }
   };
 
@@ -209,8 +254,7 @@ export default function App() {
     };
 
     if (isConfigured) {
-      const { error } = await supabase.from('ideas').update(updatedIdea).eq('id', ideaId);
-      if (error) alert("Sync Grade Failed: " + error.message);
+      await supabase.from('ideas').update(updatedIdea).eq('id', ideaId);
     } else {
       updateIdea(updatedIdea);
     }
@@ -219,10 +263,9 @@ export default function App() {
   };
 
   const clearSession = async () => {
-    if (window.confirm("CRITICAL: This will permanently delete all shared concepts. Proceed?")) {
+    if (window.confirm("CRITICAL: This will permanently delete all shared data. Proceed?")) {
       if (isConfigured) {
-        const { error } = await supabase.from('ideas').delete().neq('id', '0');
-        if (error) alert("Sync Clear Failed: " + error.message);
+        await supabase.from('ideas').delete().neq('id', '0');
       } else {
         setIdeas([]);
       }
@@ -246,7 +289,7 @@ export default function App() {
               <div className="w-12 h-12 bg-amber-900 rounded-xl flex items-center justify-center shrink-0 shadow-lg"><Terminal className="w-6 h-6 text-white" /></div>
               <div className="flex-grow space-y-1">
                  <h4 className="text-[10px] font-black uppercase tracking-widest text-amber-900">Multiplayer Setup Pending</h4>
-                 <p className="text-xs text-amber-700 leading-tight">Sync is currently offline. To enable multi-laptop use, you must configure Supabase in <code className="bg-amber-100 px-1 rounded">supabase.ts</code>.</p>
+                 <p className="text-xs text-amber-700 leading-tight">Sync is offline. Configuration required in <code className="bg-amber-100 px-1 rounded">supabase.ts</code>.</p>
               </div>
               <div className="flex flex-col gap-2">
                  <a href="https://supabase.com" target="_blank" className="px-4 py-2 bg-amber-900 text-white text-[9px] font-black uppercase tracking-widest rounded-lg flex items-center gap-2 hover:bg-black transition-colors"><ExternalLink className="w-3 h-3" /> Get Keys</a>
@@ -258,16 +301,16 @@ export default function App() {
       <main className="pt-24 pb-20 px-8 max-w-6xl mx-auto relative z-10">
         <AnimatePresence mode="wait">
           {currentScreen === 'LOBBY' && (
-            <Lobby key="lobby" onStart={() => activeParticipant && setCurrentScreen('BRAINSTORM')} activeParticipant={activeParticipant} onClaimSeat={setActiveParticipant} onReset={clearSession} hasData={ideas.length > 0} />
+            <Lobby key="lobby" onStart={() => activeParticipant && setCurrentScreen('BRAINSTORM')} activeParticipant={activeParticipant} onClaimSeat={setActiveParticipant} onReset={clearSession} hasData={ideas.length > 0} participants={participants} onAddMember={addMember} onUpdateMember={updateMember} />
           )}
           {currentScreen === 'BRAINSTORM' && (
             <Brainstorm key="brainstorm" activeParticipant={activeParticipant} ideas={ideas.filter(i => i.ownerId === activeParticipant?.id)} onUpdateIdea={updateIdea} onAddIdea={addIdea} onRemoveIdea={removeIdea} />
           )}
           {currentScreen === 'VOTE' && (
-            <Vote key="vote" ideas={battleIdeas} currentIndex={votingIndex} onVote={handleDetailedVote} onNext={() => setVotingIndex(prev => (prev + 1) % battleIdeas.length)} onPrev={() => setVotingIndex(prev => (prev - 1 + battleIdeas.length) % battleIdeas.length)} />
+            <Vote key="vote" ideas={battleIdeas} currentIndex={votingIndex} onVote={handleDetailedVote} onNext={() => setVotingIndex(prev => (prev + 1) % battleIdeas.length)} onPrev={() => setVotingIndex(prev => (prev - 1 + battleIdeas.length) % battleIdeas.length)} participants={participants} />
           )}
           {currentScreen === 'SUMMARY' && (
-            <Summary key="summary" ideas={ideas} />
+            <Summary key="summary" ideas={ideas} participants={participants} />
           )}
         </AnimatePresence>
       </main>
@@ -275,18 +318,20 @@ export default function App() {
       <footer className="fixed bottom-6 left-8 flex items-center gap-6 opacity-40 pointer-events-auto">
         <div className="flex items-center gap-2">
            <Database className={cn("w-3 h-3", isConfigured ? "text-blue-600" : "text-amber-600")} />
-           <span className="text-[8px] font-black uppercase tracking-widest">{isConfigured ? "Supabase Multi-Device Engine" : "Local-Only Mode (Offline Sync)"}</span>
+           <span className="text-[8px] font-black uppercase tracking-widest">{isConfigured ? "Supabase Multi-Device Engine" : "Local-Only Mode"}</span>
         </div>
         <div className="w-px h-2 bg-slate-300" />
-        <span className="text-[8px] font-black uppercase tracking-widest">V1.2.1-RESILIENT</span>
+        <span className="text-[8px] font-black uppercase tracking-widest">V1.3.0-EXTENDED</span>
       </footer>
     </div>
   );
 }
 
-// --- SCREENS (Lobby, Brainstorm, Vote, Summary remain largely the same, just showing the setup state in Lobby) ---
+// --- LOBBY SCREEN ---
 
-function Lobby({ onStart, activeParticipant, onClaimSeat, onReset, hasData }: any) {
+function Lobby({ onStart, activeParticipant, onClaimSeat, onReset, hasData, participants, onAddMember, onUpdateMember }: any) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+
   return (
     <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="flex flex-col items-center space-y-12 py-4">
       <div className="text-center space-y-6 max-w-3xl">
@@ -296,17 +341,40 @@ function Lobby({ onStart, activeParticipant, onClaimSeat, onReset, hasData }: an
         <h2 className="text-5xl md:text-6xl font-heading leading-tight uppercase tracking-tighter text-slate-900">Sync Your <br/> <span className="text-slate-300">Ambition</span></h2>
         <p className="text-lg text-slate-500 max-w-xl mx-auto font-light">Choose your node to access the shared strategic vault.</p>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-6 w-full">
-        {participants.map((p) => (
-          <motion.div key={p.id} whileHover={{ y: -3 }} onClick={() => onClaimSeat(p)} className={cn("p-8 flex flex-col items-center space-y-6 relative cursor-pointer group rounded-xl border-2 transition-all bg-white", activeParticipant?.id === p.id ? "border-slate-900 shadow-[8px_8px_0_0_#0f172a]" : "border-slate-100 hover:border-slate-300 shadow-sm")}>
-             <div className="w-14 h-14 rounded-xl flex items-center justify-center text-3xl border-2 border-slate-900 bg-slate-50 shadow-[4px_4px_0_0_#0f172a]">{p.mood}</div>
-             <div className="text-center">
-              <h3 className="text-base font-bold uppercase tracking-tight text-slate-900">{p.name}</h3>
-              <p className="text-[8px] text-slate-400 uppercase tracking-widest mt-1">Node 00{p.id}</p>
+      <div className="flex flex-wrap justify-center gap-6 w-full max-w-5xl">
+        {participants.map((p: any) => (
+          <motion.div key={p.id} whileHover={{ y: -3 }} onClick={() => onClaimSeat(p)} className={cn("p-8 min-w-[180px] flex-1 flex flex-col items-center space-y-6 relative cursor-pointer group rounded-xl border-2 transition-all bg-white", activeParticipant?.id === p.id ? "border-slate-900 shadow-[8px_8px_0_0_#0f172a]" : "border-slate-100 hover:border-slate-300 shadow-sm")}>
+             <div className="w-14 h-14 rounded-xl flex items-center justify-center text-3xl border-2 border-slate-900 bg-slate-50 shadow-[4px_4px_0_0_#0f172a] relative">
+               {p.mood}
+               <button onClick={(e) => { e.stopPropagation(); setEditingId(editingId === p.id ? null : p.id); }} className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-white border-2 border-slate-900 flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-slate-900 hover:text-white transition-all"><Palette className="w-3 h-3" /></button>
              </div>
+             
+             {editingId === p.id ? (
+               <div className="flex flex-col gap-2 w-full animate-in fade-in duration-200" onClick={(e) => e.stopPropagation()}>
+                 <input autoFocus type="text" value={p.name} onChange={(e) => onUpdateMember({...p, name: e.target.value})} className="w-full text-[10px] font-bold uppercase bg-slate-50 border-2 border-slate-900 p-1 text-center outline-none rounded" onBlur={() => setEditingId(null)} />
+                 <input type="text" value={p.mood} onChange={(e) => onUpdateMember({...p, mood: e.target.value})} className="w-full text-[12px] bg-slate-50 border-2 border-slate-900 p-1 text-center outline-none rounded" />
+               </div>
+             ) : (
+               <div className="text-center">
+                <h3 className="text-base font-bold uppercase tracking-tight text-slate-900">{p.name}</h3>
+                <p className="text-[8px] text-slate-400 uppercase tracking-widest mt-1">Node Active</p>
+               </div>
+             )}
+
              <div className={cn("w-full py-3 text-[8px] font-black uppercase tracking-widest border-2 transition-all rounded-lg text-center", activeParticipant?.id === p.id ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-300 border-slate-100 group-hover:border-slate-900 group-hover:text-slate-900")}>{activeParticipant?.id === p.id ? "Active" : "Sync"}</div>
           </motion.div>
         ))}
+        
+        {/* ADD MEMBER BUTTON */}
+        <motion.div whileHover={{ y: -3 }} onClick={onAddMember} className="p-8 min-w-[180px] flex-1 flex flex-col items-center justify-center space-y-4 cursor-pointer group rounded-xl border-2 border-dashed border-slate-200 hover:border-slate-900 transition-all bg-white/40">
+           <div className="w-14 h-14 rounded-full border-2 border-dashed border-slate-300 group-hover:border-slate-900 flex items-center justify-center transition-all group-hover:scale-110">
+             <UserPlus className="w-6 h-6 text-slate-300 group-hover:text-slate-900" />
+           </div>
+           <div className="text-center">
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-slate-900">Add Friend</h3>
+              <p className="text-[8px] text-slate-300 uppercase tracking-widest mt-1">New Node</p>
+           </div>
+        </motion.div>
       </div>
       <div className="pt-6 flex items-center gap-6">
         <button onClick={onStart} disabled={!activeParticipant} className="btn-primary">Initialize Workspace <ArrowRight className="w-4 h-4" /></button>
@@ -320,7 +388,8 @@ function Lobby({ onStart, activeParticipant, onClaimSeat, onReset, hasData }: an
   );
 }
 
-// ... rest of components (Brainstorm, Vote, Summary) are identical to previous version ...
+// --- OTHER SCREENS (Updated to use dynamic participants) ---
+
 function Brainstorm({ activeParticipant, ideas, onUpdateIdea, onAddIdea, onRemoveIdea }: any) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [activeStep, setActiveStep] = useState(1);
@@ -365,7 +434,7 @@ function Brainstorm({ activeParticipant, ideas, onUpdateIdea, onAddIdea, onRemov
             <div className="flex-grow flex flex-col items-center justify-center space-y-8 text-center">
                <div className="w-20 h-20 rounded-3xl bg-slate-50 border-2 border-slate-100 flex items-center justify-center text-5xl grayscale opacity-50">💡</div>
                <div className="space-y-3">
-                 <h4 className="text-2xl font-heading uppercase text-slate-900">Shared Strategic Blueprint</h4>
+                 <h4 className="text-2xl font-heading uppercase text-slate-900">Global Strategic Blueprint</h4>
                  <p className="text-slate-400 text-sm max-w-sm mx-auto">Start by adding a new concept. It will instantly sync to all laptops.</p>
                </div>
                <button onClick={() => onAddIdea(activeParticipant.id)} className="btn-primary">Create Shared Concept</button>
@@ -432,9 +501,9 @@ function Brainstorm({ activeParticipant, ideas, onUpdateIdea, onAddIdea, onRemov
   );
 }
 
-function Vote({ ideas, currentIndex, onVote, onNext, onPrev }: any) {
+function Vote({ ideas, currentIndex, onVote, onNext, onPrev, participants }: any) {
   const currentIdea = ideas[currentIndex];
-  const owner = participants.find(p => p.id === currentIdea?.ownerId);
+  const owner = participants.find((p: any) => p.id === currentIdea?.ownerId);
   const [localScores, setLocalScores] = useState({ innovation: 3, viability: 3, execution: 3 });
   const [comment, setComment] = useState("");
 
@@ -510,7 +579,7 @@ function Vote({ ideas, currentIndex, onVote, onNext, onPrev }: any) {
   );
 }
 
-function Summary({ ideas }: any) {
+function Summary({ ideas, participants }: any) {
   const [selectedIdea, setSelectedIdea] = useState<Idea | null>(null);
   const rankedIdeas = useMemo(() => {
     return [...ideas].filter(i => i.groupScore !== undefined).sort((a, b) => (b.groupScore || 0) - (a.groupScore || 0));
@@ -540,7 +609,7 @@ function Summary({ ideas }: any) {
                <div className="absolute -top-8 w-12 h-12 bg-white border-2 border-slate-900 rounded-lg flex items-center justify-center font-heading text-slate-900 shadow-lg text-xl">02</div>
                <div className="text-center pt-2">
                  <h4 className="text-xl font-heading uppercase text-slate-900">{top3[1].title}</h4>
-                 <p className="text-[9px] font-bold text-slate-400 uppercase">{participants.find(p => p.id === top3[1].ownerId)?.name}</p>
+                 <p className="text-[9px] font-bold text-slate-400 uppercase">{participants.find((p: any) => p.id === top3[1].ownerId)?.name}</p>
                </div>
                <div className="text-4xl font-heading text-slate-800">{(top3[1].groupScore || 0).toFixed(1)}</div>
              </div>
@@ -564,7 +633,7 @@ function Summary({ ideas }: any) {
                <div className="absolute -top-8 w-12 h-12 bg-white border-2 border-slate-200 rounded-lg flex items-center justify-center font-heading text-slate-200 shadow-lg text-xl">03</div>
                <div className="text-center pt-2">
                  <h4 className="text-xl font-heading uppercase text-slate-900">{top3[2].title}</h4>
-                 <p className="text-[9px] font-bold text-slate-400 uppercase">{participants.find(p => p.id === top3[2].ownerId)?.name}</p>
+                 <p className="text-[9px] font-bold text-slate-400 uppercase">{participants.find((p: any) => p.id === top3[2].ownerId)?.name}</p>
                </div>
                <div className="text-4xl font-heading text-slate-800">{(top3[2].groupScore || 0).toFixed(1)}</div>
              </div>
@@ -596,8 +665,8 @@ function Summary({ ideas }: any) {
                     </td>
                     <td className="p-6">
                       <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded border-2 border-slate-900 flex items-center justify-center shadow-[2px_2px_0_0_#0f172a]" style={{ backgroundColor: participants.find(p => p.id === idea.ownerId)?.color }}>{participants.find(p => p.id === idea.ownerId)?.mood}</div>
-                        <span className="font-black uppercase text-[9px] tracking-tight">{participants.find(p => p.id === idea.ownerId)?.name}</span>
+                        <div className="w-7 h-7 rounded border-2 border-slate-900 flex items-center justify-center shadow-[2px_2px_0_0_#0f172a]" style={{ backgroundColor: participants.find((p: any) => p.id === idea.ownerId)?.color }}>{participants.find((p: any) => p.id === idea.ownerId)?.mood}</div>
+                        <span className="font-black uppercase text-[9px] tracking-tight">{participants.find((p: any) => p.id === idea.ownerId)?.name}</span>
                       </div>
                     </td>
                     <td className="p-6 text-right"><span className="text-3xl font-heading text-slate-900">{(idea.groupScore || 0).toFixed(1)}</span></td>
@@ -607,6 +676,75 @@ function Summary({ ideas }: any) {
             </table>
          </div>
       </div>
+      <AnimatePresence>
+        {selectedIdea && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-8 bg-slate-900/40 backdrop-blur-sm">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white border-4 border-slate-900 rounded-[2.5rem] w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-[30px_30px_0_0_rgba(15,23,42,0.1)] flex flex-col">
+              <div className="p-10 border-b-2 border-slate-900 flex justify-between items-start bg-slate-50">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3"><span className="px-3 py-1 bg-slate-900 text-white rounded-full text-[9px] font-black uppercase tracking-widest">Blueprint V1.2-MULTI</span><span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ID: {selectedIdea.id}</span></div>
+                  <h3 className="text-5xl font-heading uppercase text-slate-900 leading-none">{selectedIdea.title}</h3>
+                </div>
+                <button onClick={() => setSelectedIdea(null)} className="w-12 h-12 rounded-xl bg-white border-2 border-slate-900 flex items-center justify-center hover:bg-slate-900 hover:text-white transition-all shadow-[4px_4px_0_0_#0f172a]"><X className="w-6 h-6" /></button>
+              </div>
+              <div className="flex-grow overflow-y-auto p-12 space-y-12">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                  <div className="space-y-8">
+                    <div className="space-y-2"><label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">The Core Narrative</label><p className="text-xl font-light leading-relaxed text-slate-700">{selectedIdea.pitch}</p></div>
+                    <div className="space-y-2"><label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Market Inefficiency</label><p className="text-sm leading-relaxed text-slate-600">{selectedIdea.problem}</p></div>
+                    <div className="space-y-2"><label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Revenue Model</label><p className="text-sm leading-relaxed text-slate-600">{selectedIdea.revenueModel}</p></div>
+                  </div>
+                  <div className="space-y-8">
+                    <div className="grid grid-cols-2 gap-6">
+                      <div className="p-6 bg-slate-50 rounded-2xl border-2 border-slate-900 shadow-[4px_4px_0_0_#0f172a]"><p className="text-[9px] font-black uppercase text-slate-400 mb-1">Moat</p><p className="text-sm font-bold text-slate-900">{selectedIdea.unfairAdvantage}</p></div>
+                      <div className="p-6 bg-slate-50 rounded-2xl border-2 border-slate-900 shadow-[4px_4px_0_0_#0f172a]"><p className="text-[9px] font-black uppercase text-slate-400 mb-1">Target</p><p className="text-sm font-bold text-slate-900">{selectedIdea.targetCustomer}</p></div>
+                      <div className="p-6 bg-slate-50 rounded-2xl border-2 border-slate-900 shadow-[4px_4px_0_0_#0f172a]"><p className="text-[9px] font-black uppercase text-slate-400 mb-1">CapEx</p><p className="text-sm font-bold text-slate-900">{selectedIdea.startupCost}</p></div>
+                      <div className="p-6 bg-slate-50 rounded-2xl border-2 border-slate-900 shadow-[4px_4px_0_0_#0f172a]"><p className="text-[9px] font-black uppercase text-slate-400 mb-1">Launch</p><p className="text-sm font-bold text-slate-900">{selectedIdea.timeToLaunch}</p></div>
+                    </div>
+                  </div>
+                </div>
+                <div className="pt-12 border-t-2 border-slate-100 grid grid-cols-1 md:grid-cols-12 gap-12">
+                   <div className="md:col-span-5 space-y-6">
+                      <h4 className="text-[11px] font-black uppercase tracking-widest text-slate-900">Strategic Performance</h4>
+                      <div className="space-y-4">
+                        {selectedIdea.scores && Object.entries(selectedIdea.scores).map(([k, v]) => (
+                          <div key={k} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
+                             <span className="text-[10px] font-black uppercase text-slate-500">{k}</span>
+                             <div className="flex gap-1">
+                               {[1,2,3,4,5].map(dot => <div key={dot} className={cn("w-2 h-2 rounded-full", dot <= (v as number) ? "bg-slate-900" : "bg-slate-200")} />)}
+                             </div>
+                             <span className="font-heading text-lg">{v as number}/5</span>
+                          </div>
+                        ))}
+                      </div>
+                   </div>
+                   <div className="md:col-span-7 space-y-6">
+                      <h4 className="text-[11px] font-black uppercase tracking-widest text-slate-900">Strategist Feedback Log</h4>
+                      <div className="space-y-4">
+                         {selectedIdea.comments && selectedIdea.comments.length > 0 ? (
+                           selectedIdea.comments.map((c, i) => {
+                             const author = participants.find((p: any) => p.id === c.authorId);
+                             return (
+                               <div key={i} className="space-y-2">
+                                  <div className="flex items-center gap-2">
+                                     <div className="w-5 h-5 rounded border border-slate-900 flex items-center justify-center text-[10px]" style={{ backgroundColor: author?.color }}>{author?.mood}</div>
+                                     <span className="text-[9px] font-black uppercase text-slate-900">{author?.name}</span>
+                                  </div>
+                                  <div className="p-4 bg-slate-900 text-white rounded-2xl text-xs leading-relaxed italic">"{c.text}"</div>
+                               </div>
+                             );
+                           })
+                         ) : (
+                           <p className="text-xs text-slate-400 italic">No attributed comments recorded.</p>
+                         )}
+                      </div>
+                   </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
