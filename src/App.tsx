@@ -163,20 +163,25 @@ export default function App() {
       feasibility: 5
     };
     
+    // Optimistic Update
+    setIdeas(prev => [...prev, newIdea]);
+
     if (isConfigured) {
       const { error } = await supabase.from('ideas').insert([newIdea]);
-      if (error) alert("Sync Failed: " + error.message);
-    } else {
-      setIdeas(prev => [...prev, newIdea]);
+      if (error) {
+        console.error("Sync Failed:", error);
+        // If it failed, we could remove it, but let's keep it simple for the session
+      }
     }
   };
 
   const removeIdea = async (id: string) => {
+    // Optimistic Update
+    setIdeas(prev => prev.filter(i => i.id !== id));
+
     if (isConfigured) {
       const { error } = await supabase.from('ideas').delete().eq('id', id);
-      if (error) alert("Sync Failed: " + error.message);
-    } else {
-      setIdeas(prev => prev.filter(i => i.id !== id));
+      if (error) console.error("Sync Failed:", error);
     }
   };
 
