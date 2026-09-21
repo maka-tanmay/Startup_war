@@ -2,11 +2,11 @@
 
 ## Scope and mode
 
-Full application shell and four-stage workflow. Visitor mode: Operate.
+Full application shell and five-stage workflow. Visitor mode: Operate.
 
 ## Audience, job, and constraints
 
-Small groups use the app together to add themselves, draft ideas, score them, and review a winner. The redesign must preserve every existing workflow and Supabase/local-storage behavior, clarify first use, and work at desktop and mobile widths.
+Small groups use the app together to add themselves, draft ideas, score and present them, compare the human ranking with an LLM Council, and review a winner. The redesign must preserve every existing workflow and Supabase/local-storage behavior, clarify first use, and work at desktop and mobile widths.
 
 ## Direction contract
 
@@ -14,7 +14,7 @@ Small groups use the app together to add themselves, draft ideas, score them, an
 
 **OWN-WORLD:** An off-white dotted field, white paper surfaces, dark ink rules, squared controls, and crisp offset shadows continue the original visual language. Participant colors identify people rather than decorate the interface. Yellow is reserved for small moments of attention.
 
-**STORY:** The roster is the first move. The group adds real names, each person claims their identity, then the interface carries them from drafting to battle to a final ranked summit without losing shared state.
+**STORY:** The roster is the first move. The group adds real names, each person claims their identity, then the interface carries them from drafting to battle, through a presentation-gated council, and into a final ranked summit without losing shared state.
 
 **FIRST VIEWPORT:** A ruled stage rail anchors the top. Below it, a compact lobby pairs the session statement and live roster count with a paper-like name-entry console; participant seats flow beneath as a responsive worktable. The primary action remains visible after a seat is claimed.
 
@@ -30,3 +30,5 @@ Small groups use the app together to add themselves, draft ideas, score them, an
 - The selected person stays synchronized after edits and clears after removal.
 - Loading, empty, validation, hover, focus, active, disabled, and reduced-motion states are present.
 - All five stages share the same visual system and remain usable at 390 px and 1440 px widths.
+- The council action remains unavailable until every eligible concept is presented.
+- Human ranking and council recommendation stay visibly separate, with all five advisor views accessible.

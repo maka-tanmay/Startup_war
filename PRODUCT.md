@@ -12,7 +12,7 @@ Friends or small teams running a live startup-idea session together, often acros
 
 ## Product Purpose
 
-SparkTank gives a group one shared place to create a roster, draft startup concepts, evaluate them, and compare the final ranking. Success means everyone can identify themselves quickly, add ideas without confusion, and reach a credible group result in one session.
+SparkTank gives a group one shared place to create a roster, draft startup concepts, evaluate and present them, then compare the human ranking with an independent LLM Council. Success means everyone can identify themselves quickly, add ideas without confusion, hear every presentation before judgment, and reach a credible group decision in one session.
 
 ## Positioning
 
@@ -20,13 +20,15 @@ The product combines private-by-person drafting with a shared battle and ranked 
 
 ## Operating Context
 
-Sessions move through five stages: lobby, drafting, battle, presentation, and results. Supabase provides cross-device synchronization on the deployed Vercel app; local storage keeps the app usable when Supabase is not configured.
+Sessions move through five stages: lobby, drafting, battle, presentation and council, and results. Supabase provides cross-device synchronization on the deployed Vercel app; local storage keeps the app usable when Supabase is not configured. The local council bridge uses Tanmay's authenticated Codex CLI.
 
 ## Capabilities and Constraints
 
 - People can be added, renamed, selected, and removed from the roster.
 - Each person owns their concepts; removing someone also removes their concepts after confirmation.
 - Concepts move through guided drafting fields, scored evaluation, and ranked results.
+- The host controls a presentation queue; the council remains locked until every eligible concept is marked complete.
+- Five independent advisors, five anonymous peer reviews, and one chairman synthesis provide a separate recommendation without overwriting human scores.
 - The existing React, Vite, Supabase, and Vercel architecture must remain intact.
 - The interface must remain usable on phones and desktop browsers, with reduced-motion support.
 

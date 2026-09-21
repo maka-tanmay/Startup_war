@@ -1,4 +1,4 @@
-# Deferred feature: presentation council
+# Presentation council
 
 ## Intent
 
@@ -6,7 +6,7 @@ After every participant has presented, SparkTank should run the competing startu
 
 Reference implementation: [aiwithremy/claude-skills-llm-council](https://github.com/aiwithremy/claude-skills-llm-council)
 
-This feature is deferred. It must not expand the current roster-and-interface redesign scope in `SPEC.md`.
+Implementation lives in `src/components/PresentationCouncil.tsx`; the CLI orchestration lives in `server/councilRunner.mjs`. Supabase synchronization is defined in `supabase/migrations/20260921000000_presentation_council.sql`.
 
 ## Presentation flow
 
