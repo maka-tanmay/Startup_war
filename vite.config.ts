@@ -21,18 +21,6 @@ export default defineConfig({
         app: 'index.html',
         guide: 'guide.html',
       },
-      output: {
-        codeSplitting: {
-          minSize: 20_000,
-          groups: [
-            {
-              name: 'vendor',
-              test: /node_modules[\\/]/,
-              maxSize: 250_000,
-            },
-          ],
-        },
-      },
     },
   },
 })

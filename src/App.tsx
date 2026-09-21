@@ -64,6 +64,13 @@ function readJson<T>(key: string, fallback: T): T {
   }
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => window.setTimeout(() => reject(new Error('Shared sync timed out.')), timeoutMs))
+  ]);
+}
+
 function getGuideStage(): Screen {
   const stage = new URLSearchParams(window.location.search).get('stage');
   if (stage === 'draft') return 'BRAINSTORM';
@@ -208,12 +215,16 @@ export default function App() {
 
     const fetchData = async () => {
       try {
-        const [{ data: roomsData, error: roomsError }, { data: ideasData }, { data: partsData }, { data: ratingsData, error: ratingsError }] = await Promise.all([
+        const [{ data: roomsData, error: roomsError }, { data: ideasData, error: ideasError }, { data: partsData, error: partsError }, { data: ratingsData, error: ratingsError }] = await withTimeout(Promise.all([
           supabase.from('rooms').select('*').order('created_at', { ascending: true }),
           supabase.from('ideas').select('*').eq('room_id', activeRoomId),
           supabase.from('participants').select('*').eq('room_id', activeRoomId),
           supabase.from('idea_ratings').select('*').eq('session_id', activeRoomId)
-        ]);
+        ]), 4_000);
+
+        if (roomsError || ideasError || partsError || ratingsError) {
+          throw new Error('Shared room storage is unavailable.');
+        }
 
         if (!roomsError) {
           let nextRooms = (roomsData || []).map(row => normalizeRoomRow(row));
@@ -230,6 +241,7 @@ export default function App() {
         setDbConnected(true);
       } catch (err) {
         setDbConnected(false);
+        setIsConfigured(false);
       } finally {
         setHasLoadedData(true);
       }
