@@ -3,10 +3,15 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { cleanCouncilText, normalizeCouncilConcepts } from '../shared/council-normalize.mjs';
 
 const WORKFLOW_VERSION = 'llm-council-v1';
 const MAX_BODY_BYTES = 256_000;
 const MAX_CONCEPTS = 20;
+const configuredConcurrency = Number.parseInt(process.env.SPARKTANK_COUNCIL_MAX_RUNS || '1', 10);
+const MAX_CONCURRENT_COUNCILS = Number.isFinite(configuredConcurrency) && configuredConcurrency > 0
+  ? Math.min(configuredConcurrency, 10)
+  : 1;
 const activeRuns = new Map();
 
 const advisors = [
@@ -76,35 +81,17 @@ const resultSchema = {
   required: ['recommendedIdeaId', 'recommendedIdeaTitle', 'advisorViews', 'agreement', 'clashes', 'blindSpots', 'recommendation', 'firstAction']
 };
 
-function cleanText(value, maxLength = 4000) {
-  return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
-}
-
 function validatePayload(payload) {
   if (!payload || typeof payload !== 'object') throw new Error('Request body must be a JSON object.');
-  const sessionId = cleanText(payload.sessionId, 100);
-  const inputHash = cleanText(payload.inputHash, 128);
+  const sessionId = cleanCouncilText(payload.sessionId, 100);
+  const inputHash = cleanCouncilText(payload.inputHash, 128);
   if (!sessionId || !inputHash) throw new Error('sessionId and inputHash are required.');
   if (!Array.isArray(payload.concepts) || payload.concepts.length < 2) throw new Error('At least two concepts are required for a council decision.');
   if (payload.concepts.length > MAX_CONCEPTS) throw new Error(`Council runs support at most ${MAX_CONCEPTS} concepts.`);
 
-  const concepts = payload.concepts.map((concept, index) => {
-    const normalized = {
-      id: cleanText(concept?.id, 120),
-      presenter: cleanText(concept?.presenter, 120),
-      title: cleanText(concept?.title, 180),
-      pitch: cleanText(concept?.pitch),
-      problem: cleanText(concept?.problem),
-      targetCustomer: cleanText(concept?.targetCustomer, 1000),
-      revenueModel: cleanText(concept?.revenueModel, 2000),
-      startupCost: cleanText(concept?.startupCost, 500),
-      timeToLaunch: cleanText(concept?.timeToLaunch, 500),
-      marketSize: cleanText(concept?.marketSize, 500),
-      unfairAdvantage: cleanText(concept?.unfairAdvantage, 2000),
-      biggestRisk: cleanText(concept?.biggestRisk, 2000)
-    };
+  const concepts = normalizeCouncilConcepts(payload.concepts);
+  concepts.forEach((normalized, index) => {
     if (!normalized.id || !normalized.title) throw new Error(`Concept ${index + 1} needs an id and title.`);
-    return normalized;
   });
 
   if (new Set(concepts.map(({ id }) => id)).size !== concepts.length) throw new Error('Concept ids must be unique.');
@@ -266,9 +253,11 @@ export async function runCouncil(payload) {
   const { sessionId, inputHash, concepts } = validatePayload(payload);
   const calculatedHash = createHash('sha256').update(JSON.stringify(concepts)).digest('hex');
   if (inputHash.length < 16) throw new Error('inputHash is invalid.');
+  if (inputHash !== calculatedHash) throw new Error('The council input changed before the run began. Refresh the session and try again.');
 
   const cacheKey = `${sessionId}:${inputHash}:${calculatedHash}`;
   if (activeRuns.has(cacheKey)) return activeRuns.get(cacheKey);
+  if (activeRuns.size >= MAX_CONCURRENT_COUNCILS) throw new Error('Another council is already running. Wait for it to finish before starting a new one.');
 
   const promise = (async () => {
     const result = process.env.SPARKTANK_COUNCIL_MOCK === '1'
@@ -288,9 +277,8 @@ export async function runCouncil(payload) {
   activeRuns.set(cacheKey, promise);
   try {
     return await promise;
-  } catch (error) {
+  } finally {
     activeRuns.delete(cacheKey);
-    throw error;
   }
 }
 

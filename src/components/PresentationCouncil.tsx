@@ -22,6 +22,7 @@ import {
   Zap
 } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
+import { normalizeCouncilConcepts } from '../../shared/council-normalize.mjs';
 import type { Idea, Participant } from '../data/mockData';
 import { supabase } from '../lib/supabase';
 import type {
@@ -114,7 +115,7 @@ export default function PresentationCouncil({ ideas, participants, isConfigured,
   const selectedIdea = eligibleIdeas.find(idea => idea.id === selectedIdeaId) || eligibleIdeas[0];
   const selectedOwner = selectedIdea ? participantById.get(selectedIdea.ownerId) : undefined;
 
-  const conceptInput = useMemo<CouncilConceptInput[]>(() => eligibleIdeas.map(idea => ({
+  const conceptInput = useMemo<CouncilConceptInput[]>(() => normalizeCouncilConcepts(eligibleIdeas.map(idea => ({
     id: idea.id,
     presenter: participantById.get(idea.ownerId)?.name || 'Unknown presenter',
     title: idea.title,
@@ -127,7 +128,7 @@ export default function PresentationCouncil({ ideas, participants, isConfigured,
     marketSize: idea.marketSize,
     unfairAdvantage: idea.unfairAdvantage,
     biggestRisk: idea.biggestRisk
-  })), [eligibleIdeas, participantById]);
+  }))), [eligibleIdeas, participantById]);
 
   useEffect(() => {
     if (!selectedIdeaId && eligibleIdeas[0]) setSelectedIdeaId(eligibleIdeas[0].id);
@@ -196,9 +197,11 @@ export default function PresentationCouncil({ ideas, participants, isConfigured,
 
   const completedCount = eligibleIdeas.filter(idea => progress[idea.id]?.status === 'complete').length;
   const allPresented = eligibleIdeas.length > 0 && completedCount === eligibleIdeas.length;
+  const hasComparisonField = eligibleIdeas.length >= 2;
+  const gateUnlocked = allPresented && hasComparisonField;
   const currentStatus = selectedIdea ? progress[selectedIdea.id]?.status || 'not_started' : 'not_started';
   const isStale = councilRun.status === 'complete' && Boolean(currentInputHash) && councilRun.inputHash !== currentInputHash;
-  const councilReady = allPresented && eligibleIdeas.length >= 2 && Boolean(currentInputHash);
+  const councilReady = gateUnlocked && Boolean(currentInputHash);
   const humanWinner = useMemo(() => [...eligibleIdeas]
     .filter(idea => idea.groupScore !== undefined)
     .sort((a, b) => (b.groupScore || 0) - (a.groupScore || 0))[0], [eligibleIdeas]);
@@ -387,12 +390,12 @@ export default function PresentationCouncil({ ideas, participants, isConfigured,
         </aside>
       </div>
 
-      <section className={`council-gate ${allPresented ? 'is-unlocked' : ''}`}>
+      <section className={`council-gate ${gateUnlocked ? 'is-unlocked' : ''}`}>
         <div className="gate-copy">
-          <div className="gate-icon">{allPresented ? <BrainCircuit /> : <Scale />}</div>
+          <div className="gate-icon">{gateUnlocked ? <BrainCircuit /> : <Scale />}</div>
           <div>
-            <h3>{allPresented ? 'The council is unlocked' : `${eligibleIdeas.length - completedCount} presentation${eligibleIdeas.length - completedCount === 1 ? '' : 's'} before judgment`}</h3>
-            <p>{allPresented ? 'Five independent advisors, anonymous peer review, then one chairman verdict.' : 'The result stays hidden so later presenters are not anchored by an early favorite.'}</p>
+            <h3>{gateUnlocked ? 'The council is unlocked' : allPresented ? 'The council needs another concept' : `${eligibleIdeas.length - completedCount} presentation${eligibleIdeas.length - completedCount === 1 ? '' : 's'} before judgment`}</h3>
+            <p>{gateUnlocked ? 'Five independent advisors, anonymous peer review, then one chairman verdict.' : allPresented ? 'Add one more titled concept so the council has a real decision to compare.' : 'The result stays hidden so later presenters are not anchored by an early favorite.'}</p>
           </div>
         </div>
         <button type="button" className="council-run-button" disabled={!councilReady || councilRun.status === 'running'} onClick={runCouncil}>
@@ -404,7 +407,7 @@ export default function PresentationCouncil({ ideas, participants, isConfigured,
         <section className="council-loading" aria-live="polite">
           <div className="deliberation-orbit"><BrainCircuit /><span /><span /></div>
           <div><h3>The room is deliberating</h3><p>Five advisors are comparing the concepts. Next comes anonymous peer review and a chairman synthesis.</p></div>
-          <div className="deliberation-steps"><span className="is-active">Independent views</span><span>Peer review</span><span>Verdict</span></div>
+          <div className="deliberation-steps" aria-label="Council stages"><span>Independent views</span><span>Peer review</span><span>Verdict</span></div>
         </section>
       )}
 
@@ -416,7 +419,7 @@ export default function PresentationCouncil({ ideas, participants, isConfigured,
         </section>
       )}
 
-      {councilRun.status === 'complete' && councilRun.result && (
+      {gateUnlocked && councilRun.status === 'complete' && councilRun.result && (
         <section className={`council-verdict ${isStale ? 'is-stale' : ''}`} aria-live="polite">
           {isStale && <div className="stale-banner"><AlertTriangle />Concepts changed after this verdict. Run the council again before deciding.</div>}
           <div className="verdict-hero">

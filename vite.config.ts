@@ -15,4 +15,20 @@ const councilBridge = {
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react(), councilBridge],
+  build: {
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          minSize: 20_000,
+          groups: [
+            {
+              name: 'vendor',
+              test: /node_modules[\\/]/,
+              maxSize: 250_000,
+            },
+          ],
+        },
+      },
+    },
+  },
 })

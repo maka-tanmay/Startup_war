@@ -1,11 +1,12 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { lazy, Suspense, useState, useMemo, useEffect } from 'react';
 import { Participant, Idea, marketSizes } from './data/mockData';
 import { supabase } from './lib/supabase';
 import { Rocket, Users, ChevronRight, Star, Trophy, Target, DollarSign, Clock, CheckCircle2, ChevronLeft, Zap, Sparkles, BrainCircuit, TrendingUp, Search, ShieldAlert, BadgeCheck, Coins, LayoutGrid, ArrowRight, MousePointer2, MessageSquare, Info, X, Lightbulb, BarChart3, Workflow, Plus, Trash2, Database, Save, RotateCcw, Wifi, WifiOff, Globe, AlertTriangle, ExternalLink, Terminal, UserPlus, Pencil } from 'lucide-react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import PresentationCouncil from './components/PresentationCouncil';
+
+const PresentationCouncil = lazy(() => import('./components/PresentationCouncil'));
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -326,7 +327,9 @@ export default function App() {
             <Vote key="vote" ideas={battleIdeas} currentIndex={votingIndex} onVote={handleDetailedVote} onNext={() => setVotingIndex(prev => (prev + 1) % battleIdeas.length)} onPrev={() => setVotingIndex(prev => (prev - 1 + battleIdeas.length) % battleIdeas.length)} participants={participants} />
           )}
           {currentScreen === 'PRESENT' && (
-            <PresentationCouncil key="present" ideas={battleIdeas} participants={participants} isConfigured={isConfigured} onViewResults={() => setCurrentScreen('SUMMARY')} />
+            <Suspense key="present" fallback={<section className="presentation-empty" role="status"><BrainCircuit /><h2>Opening the decision room</h2><p>Loading the presentation controls and council workspace.</p></section>}>
+              <PresentationCouncil ideas={battleIdeas} participants={participants} isConfigured={isConfigured} onViewResults={() => setCurrentScreen('SUMMARY')} />
+            </Suspense>
           )}
           {currentScreen === 'SUMMARY' && (
             <Summary key="summary" ideas={ideas} participants={participants} />

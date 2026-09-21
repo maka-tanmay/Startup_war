@@ -27,6 +27,8 @@ SparkTank is a compact architectural workspace: quiet off-white field, white wor
 - **Primary buttons:** ink fill, white label, compact uppercase treatment, modest elevation.
 - **Secondary buttons:** white fill with an ink rule; invert or lift slightly on hover.
 - **Inputs:** white, ink outline, visible focus ring, no glow or translucent treatment.
+- **Workflow gates:** keep prerequisite actions visible inside a ruled status panel. Locked gates stay neutral with a disabled action and a specific explanation; unlocked gates use the yellow signal accent and stronger offset shadow.
+- **Disclosure stacks:** use full-width ruled rows with a compact icon, title, one-line remit, and chevron. Open the most decision-critical perspective by default, keep every peer perspective equally accessible, and reserve tinted emphasis for the lead row only.
 - **Participant seats:** quiet at rest, lifted on hover, dark border and offset shadow when claimed. Color stays concentrated in the avatar.
 - **Navigation:** a white ruled header with a compact dark underline for the current stage.
 
