@@ -32,14 +32,6 @@ export interface Participant {
   mood: string;
 }
 
-export const participants: Participant[] = [
-  { id: '1', name: 'Tanmay', color: '#ef4444', ideasLogged: 0, mood: '🔥' },
-  { id: '2', name: 'Taher', color: '#3b82f6', ideasLogged: 0, mood: '🤔' },
-  { id: '3', name: 'Siddhesh', color: '#10b981', ideasLogged: 0, mood: '🚀' },
-  { id: '4', name: 'Hasnain', color: '#f59e0b', ideasLogged: 0, mood: '💡' },
-  { id: '5', name: 'Ahmed', color: '#8b5cf6', ideasLogged: 0, mood: '🌈' },
-];
-
 /**
  * STARTING WITH A CLEAN SLATE FOR LIVE DEPLOYMENT.
  * All sample ideas have been removed.

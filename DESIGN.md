@@ -1,27 +1,44 @@
 # Design System: SparkTank
-**Project ID:** 624818735334931869
 
-## 1. Visual Theme & Atmosphere
-The atmosphere is "Kinetic Editorial Dark Mode." It's designed to feel less like a tool and more like an expansive digital canvas or a high-velocity war-room. It uses "The Cognitive Nebula" as its creative north star, rejecting static constraints for a design that feels alive, precision-engineered, and futuristic. The mood is high-energy, focused, and premium, borrowing aesthetic cues from high-end gaming HUDs and modern fintech.
+## Visual direction
 
-## 2. Color Palette & Roles
-*   **Electric Indigo (#a3a6ff):** The primary spark. Used for the main brand identity, active idea highlights, and key motivational triggers.
-*   **Deep Cosmic Background (#060e20):** The atmospheric base. Provides a non-distracting, focused environment that makes accents pop.
-*   **Glassy Surface (#0f1930 at 60% opacity):** Used for primary content containers to create a sense of depth and holographic layering.
-*   **Neon Logic Cyan (#53ddfc):** Used for supplemental insights, secondary data paths, and positive reinforcement.
-*   **Divergent Pink (#ffa5d9):** Used sparingly for "wildcard" ideas or divergent thoughts to distinguish them from the main flow.
+SparkTank is a compact architectural workspace: quiet off-white field, white work surfaces, dark ink structure, and small moments of color tied to people or status. It should feel like a purpose-built strategy tool—not a generic dashboard, game HUD, or marketing page.
 
-## 3. Typography Rules
-The system uses a high-contrast typographic pairing:
-*   **Space Grotesk:** The "Technical Signature." Used for headlines and display text. Its geometric quirks convey futuristic energy. Headlines use tight letter-spacing (-2%) for an authoritative feel.
-*   **Outfit/Manrope:** The "Humanist Anchor." Used for body text and descriptive content. Provides high legibility and a friendly, accessible feel against dark backgrounds.
+## Color roles
 
-## 4. Component Stylings
-*   **Buttons:** Holographic triggers. Primary buttons use a linear gradient from Electric Indigo to a deeper shade with a 135-degree angle. They have a subtle outer glow on hover and generously rounded corners (1rem).
-*   **Cards/Containers:** "Holographic Nodes." Containers use glassmorphism with a 12px-20px backdrop blur. They avoid hard 1px borders, instead defining boundaries through tonal shifts or subtle "ghost borders" (15% opacity outlines).
-*   **Inputs/Forms:** "Brainstorming Recesses." Inputs use a recessed, darker background than the card surface. Focus states transition the bottom edge to a glowing Electric Indigo line.
+- **Canvas — `#eff1f5`:** the neutral dotted workspace behind every stage.
+- **Paper — `#ffffff`:** forms, participant cards, and working panels.
+- **Ink — `#0f172a`:** primary text, rules, active navigation, and decisive controls.
+- **Secondary ink — `#475569`:** explanatory copy and inactive controls.
+- **Quiet line — `#cbd5e1` / `#e2e8f0`:** separators, empty states, and resting borders.
+- **Participant colors:** identity only. They belong on avatars and attribution, not decorative backgrounds.
+- **Amber, green, red:** reserved for local/offline, connected, and destructive states.
 
-## 5. Layout Principles
-*   **Intentional Asymmetry:** Layouts avoid rigid center-alignment. Elements may overlap slightly to create a sense of physical space and motion.
-*   **Tonal Layering:** Depth is achieved by stacking surfaces of different cosmic tones rather than traditional drop shadows.
-*   **Generous Negative Space:** Large margins and open layouts ensure that even with high-energy colors, the cognitive load remains low during intense ideation sessions.
+## Typography
+
+- **Space Grotesk:** headings, stage titles, counts, and other structural labels. Use compact tracking and strong weights.
+- **Outfit:** body copy, controls, inputs, and supporting text.
+- Small uppercase labels are part of the product's voice, but body copy remains sentence case and readable.
+- Avoid oversized editorial type that turns the workspace into a landing page.
+
+## Components
+
+- **Panels:** white, 1.5–2px dark or quiet borders, rounded 8–16px, with subtle architectural offset shadows.
+- **Primary buttons:** ink fill, white label, compact uppercase treatment, modest elevation.
+- **Secondary buttons:** white fill with an ink rule; invert or lift slightly on hover.
+- **Inputs:** white, ink outline, visible focus ring, no glow or translucent treatment.
+- **Participant seats:** quiet at rest, lifted on hover, dark border and offset shadow when claimed. Color stays concentrated in the avatar.
+- **Navigation:** a white ruled header with a compact dark underline for the current stage.
+
+## Layout and motion
+
+- Keep the first view centered and operational: session framing, add-name control, then roster.
+- Use dotted background texture sparingly to retain the original workshop character.
+- Motion should explain stage or seat changes, complete quickly, and stop. Respect reduced-motion preferences.
+- At mobile widths, the stage rail remains horizontally usable, cards become one column, and actions stay in document flow rather than covering content.
+
+## Avoid
+
+- Purple or neon gradients, glassmorphism, WebGL atmosphere, glow effects, and cosmic language.
+- Generic equal-card SaaS grids, decorative charts, and color without semantic purpose.
+- Replacing the product's original light identity with a trend-driven theme.
