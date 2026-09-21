@@ -50,12 +50,13 @@ If the group winner and council recommendation differ, treat the disagreement as
 
 Use Tanmay's CLI as the council runner. The deployed browser must not execute a local shell command directly.
 
-Expected boundary:
+Shared-room boundary:
 
 ```text
 SparkTank client
-  -> authenticated council-run endpoint
-  -> constrained CLI runner with the LLM Council skill installed
+  -> deterministic queued run in Supabase
+  -> host worker on Tanmay's laptop
+  -> constrained read-only Codex CLI council workflow
   -> structured council result
   -> persisted session result in Supabase
   -> realtime reveal for every connected participant
@@ -73,7 +74,7 @@ The runner should:
 - retain the input snapshot and prompt/workflow version used for the result;
 - expose a safe retry after failure without discarding the last successful result.
 
-For local development, the endpoint may call the installed CLI on Tanmay's machine. Before deployment, choose a server or worker environment where the same CLI and skill can run reliably; Vercel client code alone cannot depend on a user's local CLI.
+For an unconfigured local preview, Vite calls the installed CLI directly. In a shared Vercel room, the browser only queues a deterministic database record. `npm run council:worker` on Tanmay's laptop claims that record, reconstructs the exact room snapshot, rejects stale input hashes, and publishes the result. Participants never receive a shell endpoint or direct network access to the laptop.
 
 ## Suggested data shape
 

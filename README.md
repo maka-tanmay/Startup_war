@@ -13,7 +13,7 @@ npm install
 npm run dev
 ```
 
-Open the local URL printed by Vite. The development server exposes `/api/council` and invokes the installed Codex CLI in the background after a titled idea is saved. The result remains sealed in the interface until someone clicks `Show council reviews`.
+Open the local URL printed by Vite. In local-only mode the development server exposes `/api/council` and invokes the installed Codex CLI after a titled idea is saved. The result remains sealed in the interface until someone clicks `Show council reviews`.
 
 The council follows the [LLM Council methodology](https://github.com/aiwithremy/claude-skills-llm-council): five independent advisor calls run in parallel, five anonymous peer reviews run in parallel, and a final chairman call returns a structured verdict.
 
@@ -32,15 +32,17 @@ For a UI-only test with deterministic output and no model calls:
 SPARKTANK_COUNCIL_MOCK=1 npm run dev
 ```
 
-To host the CLI bridge separately:
+For a shared Vercel room, leave the host worker running on Tanmay's laptop:
 
 ```bash
-npm run council:server
+npm run council:worker
 ```
 
-Then set `VITE_COUNCIL_ENDPOINT` to that server's `/api/council` URL. The standalone bridge binds to `127.0.0.1` by default and only accepts the origin in `SPARKTANK_ALLOWED_ORIGIN`.
+The worker reads the same `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` from `.env.local`. A participant saving a titled idea creates a deterministic queued run in Supabase. The laptop claims it, loads that room's current ideas, runs the five-advisor council through the authenticated Codex CLI, and writes the verdict back for realtime sync. No participant connects directly to the laptop and no laptop port is exposed.
 
-The client cannot execute a local CLI from a deployed Vercel page. A deployed app therefore needs `VITE_COUNCIL_ENDPOINT` pointed at a reachable machine or service with the Codex CLI installed and authenticated. Provider credentials remain server-side.
+Use `SPARKTANK_COUNCIL_ROOM_IDS=room-1,room-2` to restrict the worker to known rooms. Without an allowlist it watches every queued room. Concept text is treated only as untrusted data; the CLI runs ephemerally in a temporary read-only sandbox with a fixed structured-output workflow.
+
+The older standalone loopback bridge remains available with `npm run council:server` for local testing. A deployed browser never calls a shell command directly.
 
 ## Supabase
 
