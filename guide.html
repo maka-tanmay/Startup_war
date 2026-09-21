@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="How four friends use SparkTank to draft, review, present, and choose a startup idea." />
+    <title>How to use SparkTank</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+      :root { color-scheme: light; --ink:#0f172a; --soft:#475569; --muted:#475569; --line:#cbd5e1; --paper:#fff; --canvas:#eff1f5; --signal:#facc15; --blue:#dbeafe; font-family:Outfit,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-synthesis:none; }
+      * { box-sizing:border-box; }
+      html { min-width:320px; scroll-behavior:smooth; background:var(--canvas); }
+      body { margin:0; color:var(--ink); background:var(--canvas); line-height:1.55; }
+      body::before { position:fixed; z-index:-1; inset:0; content:""; opacity:.42; background-image:radial-gradient(#94a3b8 .75px,transparent .75px); background-size:18px 18px; mask-image:linear-gradient(to bottom,#000,rgba(0,0,0,.1) 80%,transparent); }
+      a { color:inherit; text-underline-offset:3px; }
+      a:focus-visible, button:focus-visible { outline:3px solid #2563eb; outline-offset:3px; }
+      ::selection { color:#fff; background:var(--ink); }
+      .skip { position:fixed; z-index:10; top:.75rem; left:.75rem; padding:.55rem .8rem; transform:translateY(-180%); color:#fff; background:var(--ink); font-weight:800; }
+      .skip:focus { transform:none; }
+      .topbar { position:sticky; z-index:5; top:0; display:flex; align-items:center; justify-content:space-between; min-height:4.1rem; padding:.65rem max(1rem,calc((100vw - 72rem)/2)); border-bottom:2px solid var(--ink); background:rgba(255,255,255,.97); box-shadow:0 2px 8px rgba(15,23,42,.08); }
+      .brand { display:flex; align-items:center; gap:.7rem; text-decoration:none; }
+      .mark { display:grid; width:2.35rem; height:2.35rem; place-items:center; color:#fff; border-radius:.5rem; background:var(--ink); font-weight:900; }
+      .brand strong { display:block; font-size:.95rem; letter-spacing:-.03em; }
+      .brand small { display:block; color:var(--muted); font-size:.7rem; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+      .open-app { display:inline-flex; align-items:center; min-height:2.6rem; padding:0 .9rem; color:#fff; border:2px solid var(--ink); border-radius:.45rem; background:var(--ink); font-size:.72rem; font-weight:850; text-decoration:none; text-transform:uppercase; }
+      main { width:min(calc(100% - 2rem),72rem); margin:0 auto; padding:clamp(3rem,7vw,6rem) 0 6rem; }
+      .hero { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(18rem,.7fr); gap:clamp(2rem,6vw,5rem); align-items:end; padding-bottom:3rem; border-bottom:2px solid var(--ink); }
+      h1,h2,h3 { margin:0; letter-spacing:-.045em; line-height:.95; }
+      h1 { max-width:12ch; font-size:clamp(3.4rem,8vw,6rem); text-wrap:balance; }
+      .hero-copy > p { max-width:60ch; margin:1.35rem 0 0; color:var(--soft); font-size:clamp(1rem,2vw,1.2rem); }
+      .answer { padding:1.25rem; border:2px solid var(--ink); border-radius:.75rem; background:#fff; box-shadow:7px 7px 0 var(--signal); }
+      .answer strong { display:block; margin-bottom:.45rem; font-size:1.25rem; }
+      .answer p { margin:0; color:var(--soft); font-size:.88rem; }
+      .flow { display:grid; grid-template-columns:repeat(5,1fr); margin:2rem 0 0; border:2px solid var(--ink); background:#fff; overflow:hidden; }
+      .flow a { display:grid; gap:.2rem; min-height:5.2rem; padding:.8rem; border-right:1px solid var(--line); text-decoration:none; }
+      .flow a:last-child { border-right:0; }
+      .flow span { color:var(--muted); font-size:.7rem; font-weight:800; }
+      .flow strong { align-self:end; font-size:.78rem; text-transform:uppercase; }
+      .product-shots { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1.25rem; }
+      .product-shot { margin:0; overflow:hidden; border:2px solid var(--ink); border-radius:.75rem; background:#fff; box-shadow:6px 6px 0 rgba(15,23,42,.12); }
+      .shot-chrome { display:flex; align-items:center; justify-content:space-between; gap:1rem; min-height:2.5rem; padding:.5rem .7rem; color:var(--soft); border-bottom:1px solid var(--line); background:#f8fafc; font-size:.7rem; font-weight:800; letter-spacing:.04em; text-transform:uppercase; }
+      .shot-chrome span:first-child::before { display:inline-block; width:.55rem; height:.55rem; margin-right:.55rem; border-radius:50%; background:#22c55e; content:""; }
+      .shot-chrome em { color:var(--ink); font-style:normal; }
+      .product-shot iframe { display:block; width:100%; height:35rem; border:0; pointer-events:none; background:var(--canvas); }
+      .product-shot figcaption { min-height:5.7rem; padding:1rem; border-top:1px solid var(--line); }
+      .product-shot figcaption strong { display:block; margin-bottom:.3rem; font-size:.9rem; }
+      .product-shot figcaption span { display:block; color:var(--soft); font-size:.78rem; }
+      .history-note { display:grid; grid-template-columns:auto 1fr; gap:1rem; padding:1.2rem; border:2px solid var(--ink); background:#fefce8; }
+      .history-note strong { display:grid; width:2.4rem; height:2.4rem; place-items:center; border:2px solid var(--ink); background:var(--signal); }
+      .history-note h3 { margin:.1rem 0 .4rem; font-size:1.05rem; }
+      .history-note p { margin:0; color:var(--soft); font-size:.88rem; }
+      section { scroll-margin-top:5.5rem; padding:4rem 0; border-bottom:1px solid var(--line); }
+      .section-head { display:grid; grid-template-columns:minmax(12rem,.45fr) minmax(0,1fr); gap:2rem; margin-bottom:2rem; }
+      .section-head h2 { font-size:clamp(2rem,4vw,3.25rem); }
+      .section-head p { max-width:65ch; margin:.2rem 0 0; color:var(--soft); }
+      .run-sheet { border-top:2px solid var(--ink); }
+      .stage { display:grid; grid-template-columns:4rem minmax(10rem,.45fr) minmax(0,1fr) 7rem; gap:1.25rem; align-items:start; padding:1.4rem .25rem; border-bottom:1px solid var(--line); }
+      .stage-number { font-size:1.45rem; font-weight:850; font-variant-numeric:tabular-nums; }
+      .stage h3 { margin:.15rem 0 .35rem; font-size:1.15rem; }
+      .stage p { margin:0; color:var(--soft); font-size:.9rem; }
+      .stage ul { margin:0; padding-left:1.1rem; color:var(--soft); font-size:.88rem; }
+      .stage-time { justify-self:end; padding:.25rem .45rem; border:1px solid var(--ink); background:#fff; font-size:.7rem; font-weight:800; text-transform:uppercase; white-space:nowrap; }
+      .rating-table { width:100%; border-collapse:collapse; border:2px solid var(--ink); background:#fff; }
+      .rating-table th,.rating-table td { padding:1rem; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+      .rating-table th { color:var(--muted); background:#f8fafc; font-size:.7rem; letter-spacing:.07em; text-transform:uppercase; }
+      .rating-table td:first-child { width:18%; font-weight:800; }
+      .rating-table td:nth-child(2) { width:42%; color:var(--soft); }
+      .rating-table td:last-child { color:var(--soft); }
+      .rating-table tr:last-child td { border-bottom:0; }
+      .decision-grid { display:grid; grid-template-columns:1fr auto 1fr; border:2px solid var(--ink); background:#fff; }
+      .decision-side { padding:1.4rem; }
+      .decision-side h3 { margin-bottom:.65rem; font-size:1.25rem; }
+      .decision-side p { margin:0; color:var(--soft); font-size:.88rem; }
+      .decision-side ul { margin:1rem 0 0; padding-left:1.1rem; color:var(--soft); font-size:.85rem; }
+      .decision-vs { display:grid; place-items:center; min-width:5rem; border-inline:2px solid var(--ink); background:#fefce8; font-size:.72rem; font-weight:900; }
+      .button-demo { display:inline-flex; align-items:center; min-height:2.7rem; margin-top:1rem; padding:0 .8rem; border:2px solid var(--ink); background:var(--signal); box-shadow:3px 3px 0 var(--ink); font-size:.7rem; font-weight:900; text-transform:uppercase; }
+      .checklist { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); border-top:2px solid var(--ink); }
+      .check { display:flex; gap:.7rem; padding:1rem .25rem; border-bottom:1px solid var(--line); }
+      .check:nth-child(odd) { margin-right:1.5rem; }
+      .tick { display:grid; width:1.5rem; height:1.5rem; flex:0 0 auto; place-items:center; border:1.5px solid var(--ink); background:var(--signal); font-size:.72rem; font-weight:900; }
+      .check strong { display:block; font-size:.82rem; }
+      .check span { display:block; margin-top:.15rem; color:var(--soft); font-size:.78rem; }
+      details { padding:1rem 0; border-top:1px solid var(--line); }
+      details:last-child { border-bottom:1px solid var(--line); }
+      summary { cursor:pointer; font-weight:800; }
+      details p { max-width:70ch; margin:.65rem 0 0; color:var(--soft); }
+      .closing { display:flex; align-items:center; justify-content:space-between; gap:2rem; padding:3rem 0 0; }
+      .closing h2 { max-width:14ch; font-size:clamp(2rem,5vw,3.5rem); }
+      .closing a { flex:0 0 auto; }
+      footer { width:min(calc(100% - 2rem),72rem); margin:0 auto; padding:1.5rem 0 2rem; color:var(--muted); border-top:2px solid var(--ink); font-size:.72rem; }
+      @media (max-width:760px) { .hero,.section-head { grid-template-columns:1fr; } .flow { grid-template-columns:1fr; } .flow a { min-height:0; border-right:0; border-bottom:1px solid var(--line); } .product-shots { grid-template-columns:1fr; } .stage { grid-template-columns:2.4rem 1fr auto; } .stage > div:nth-child(3) { grid-column:2 / -1; } .decision-grid { grid-template-columns:1fr; } .decision-vs { min-height:2.6rem; border-block:2px solid var(--ink); border-inline:0; } .checklist { grid-template-columns:1fr; } .check:nth-child(odd) { margin-right:0; } .closing { align-items:flex-start; flex-direction:column; } }
+      @media (max-width:480px) { .brand small,.stage-time { display:none; } main { width:min(calc(100% - 1.25rem),72rem); } .hero { padding-bottom:2rem; } h1 { font-size:3rem; } section { padding:3rem 0; } .product-shot iframe { height:31rem; } .stage { grid-template-columns:2rem 1fr; } .stage > div:nth-child(3) { grid-column:2; } .rating-table { font-size:.8rem; } .rating-table th,.rating-table td { padding:.75rem .55rem; } }
+      @media print { .topbar,.flow,.open-app { display:none; } body::before { display:none; } main { width:100%; padding:0; } section { break-inside:avoid; } }
+      @media (prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } }
+    </style>
+  </head>
+  <body>
+    <a class="skip" href="#guide">Skip to guide</a>
+    <header class="topbar">
+      <a class="brand" href="/"><span class="mark">S</span><span><strong>SparkTank</strong><small>How-to guide</small></span></a>
+      <a class="open-app" href="/">Open SparkTank →</a>
+    </header>
+    <main id="guide">
+      <div class="hero">
+        <div class="hero-copy">
+          <h1>Four friends. Five stages. One decision.</h1>
+          <p>SparkTank turns a casual idea night into a fair decision session: everyone drafts, everyone reviews the business, every idea gets presented, and the group compares its scoreboard with an independent LLM Council.</p>
+        </div>
+        <aside class="answer">
+          <strong>Is that what the app does?</strong>
+          <p><b>Yes—after the latest update.</b> “Battle” is now Review, each friend’s rating is stored separately, rooms keep their own history, presentation order is randomized, council reviews have their own show button, and Results is a proper scoreboard.</p>
+        </aside>
+      </div>
+
+      <nav class="flow" aria-label="Guide sections">
+        <a href="#lobby"><span>1 · 5 min</span><strong>Lobby</strong></a>
+        <a href="#draft"><span>2 · 15 min</span><strong>Draft</strong></a>
+        <a href="#review"><span>3 · 10 min</span><strong>Review</strong></a>
+        <a href="#present"><span>4 · 15 min</span><strong>Present</strong></a>
+        <a href="#scoreboard"><span>5 · 5 min</span><strong>Scoreboard</strong></a>
+      </nav>
+
+      <section id="button-map">
+        <div class="section-head"><h2>See the exact buttons</h2><p>These are live, read-only views of the actual product—not redesigned illustrations. Use the captions as a click map; the views update whenever SparkTank changes.</p></div>
+        <div class="product-shots">
+          <figure class="product-shot">
+            <div class="shot-chrome"><span>Live product view</span><em>Lobby</em></div>
+            <iframe src="/?guide=1&amp;stage=lobby" title="SparkTank lobby showing the saved room selector and New room button" loading="lazy" tabindex="-1"></iframe>
+            <figcaption><strong>Choose a saved room or click “New room.”</strong><span>The selector reopens Room 1 later with its own friends and ideas. New room starts a separate, empty history.</span></figcaption>
+          </figure>
+          <figure class="product-shot">
+            <div class="shot-chrome"><span>Live product view</span><em>Review</em></div>
+            <iframe src="/?guide=1&amp;stage=review" title="SparkTank review screen showing rating controls" loading="lazy" tabindex="-1"></iframe>
+            <figcaption><strong>Set four ratings, then click “Save rating.”</strong><span>If you already rated it, the same button says “Update rating.” Your review never overwrites a friend’s.</span></figcaption>
+          </figure>
+          <figure class="product-shot">
+            <div class="shot-chrome"><span>Live product view</span><em>Present</em></div>
+            <iframe src="/?guide=1&amp;stage=present" title="SparkTank presentation screen showing the On stage dropdown" loading="lazy" tabindex="-1"></iframe>
+            <figcaption><strong>Use “On stage,” click “Begin presentation,” then “Mark complete.”</strong><span>After every idea is complete and the background review is ready, click “Show council reviews.”</span></figcaption>
+          </figure>
+          <figure class="product-shot">
+            <div class="shot-chrome"><span>Live product view</span><em>Scoreboard</em></div>
+            <iframe src="/?guide=1&amp;stage=scores" title="SparkTank final scoreboard showing ranked ideas" loading="lazy" tabindex="-1"></iframe>
+            <figcaption><strong>Read the ranking, then click an idea row for details.</strong><span>The human overall score is kept separate from the Council recommendation so the group can discuss disagreement.</span></figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section id="room-history">
+        <div class="section-head"><h2>Your rooms stay in history</h2><p>A room is one complete decision session. Room 1 and Room 2 never share people, ideas, ratings, presentation progress, or council output.</p></div>
+        <div class="history-note"><strong>1→2</strong><div><h3>Create Room 2 without erasing Room 1</h3><p>Open Lobby, click <b>New room</b>, and add the next group. To return later, use the <b>Saved room</b> dropdown and choose Room 1. Local preview saves rooms in this browser; a Supabase deployment saves and syncs them for the shared group.</p></div></div>
+      </section>
+
+      <section id="lobby">
+        <div class="section-head"><h2>Run the room in order</h2><p>One person can host on a shared screen while each friend uses their own laptop. The top navigation always shows the current stage, but the group should finish each stage before moving on.</p></div>
+        <div class="run-sheet">
+          <article class="stage"><div class="stage-number">01</div><div><h3>Lobby</h3><p>Add exactly four friends and claim your own seat.</p></div><div><ul><li>Use recognizable names.</li><li>Each person selects their name before drafting or rating.</li><li>The active seat controls who owns the next action.</li></ul></div><span class="stage-time">5 min</span></article>
+          <article class="stage" id="draft"><div class="stage-number">02</div><div><h3>Draft</h3><p>Turn rough thoughts into comparable startup concepts.</p></div><div><ul><li>Give each idea a title and one-line pitch.</li><li>Complete the problem, customer, revenue, cost, launch, market, advantage, risk, and notes.</li><li>Friends can draft more than one idea.</li></ul></div><span class="stage-time">15 min</span></article>
+          <article class="stage" id="review"><div class="stage-number">03</div><div><h3>Review</h3><p>This replaces the confusing “Battle” stage.</p></div><div><ul><li>Review the idea—not presentation skill or friendship.</li><li>Each friend saves one rating per idea and can update it.</li><li>Ratings stay separate, then become a group average.</li></ul></div><span class="stage-time">10 min</span></article>
+          <article class="stage" id="present"><div class="stage-number">04</div><div><h3>Present</h3><p>The app creates a neutral, randomized idea order.</p></div><div><ul><li>Select the next idea from the On stage dropdown.</li><li>The presenter sees every draft field on one page.</li><li>Mark each presentation complete; council judgment stays locked until all are heard.</li></ul></div><span class="stage-time">15 min</span></article>
+          <article class="stage" id="scoreboard"><div class="stage-number">05</div><div><h3>Scoreboard</h3><p>Compare the group’s ratings, then make the decision yourselves.</p></div><div><ul><li>Rank by the four-criterion average.</li><li>Open any idea for details and comments.</li><li>Keep the human winner and council recommendation visibly separate.</li></ul></div><span class="stage-time">5 min</span></article>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head"><h2>What the 1–5 ratings mean</h2><p>Use evidence from the idea draft. A polished speaker should not receive extra points; the presentation exists to make the concept understandable before the final decision.</p></div>
+        <div style="overflow-x:auto">
+          <table class="rating-table">
+            <thead><tr><th>Criterion</th><th>Question to answer</th><th>A high score means</th></tr></thead>
+            <tbody>
+              <tr><td>Problem value</td><td>Is the pain real, specific, and urgent?</td><td>People already feel the problem and have reason to act.</td></tr>
+              <tr><td>Market potential</td><td>Can this reach worthwhile customer demand?</td><td>The customer is identifiable and the opportunity can grow.</td></tr>
+              <tr><td>Differentiation</td><td>Does the idea have a defendable edge?</td><td>It is meaningfully better, clearer, or harder to copy.</td></tr>
+              <tr><td>Feasibility</td><td>Can a small team launch and learn?</td><td>The first version is realistic in time, cost, and complexity.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head"><h2>Two opinions, one decision</h2><p>The council is a second lens—not an automatic winner picker. It never changes the human scoreboard, and it only becomes available after every presentation is complete.</p></div>
+        <div class="decision-grid">
+          <article class="decision-side"><h3>Human scoreboard</h3><p>The four friends’ ratings are averaged for every idea.</p><ul><li>Problem value</li><li>Market potential</li><li>Differentiation</li><li>Feasibility</li></ul></article>
+          <div class="decision-vs">COMPARE</div>
+          <article class="decision-side"><h3>LLM Council</h3><p>Five independent advisors challenge the same drafts, peer-review one another, and produce a chairman recommendation.</p><div class="button-demo">Show council reviews</div></article>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head"><h2>Host checklist</h2><p>Use this before the group commits to a winner.</p></div>
+        <div class="checklist">
+          <div class="check"><span class="tick">✓</span><div><strong>Four seats are claimed</strong><span>Each action is attributed to the right friend.</span></div></div>
+          <div class="check"><span class="tick">✓</span><div><strong>Drafts are complete</strong><span>No idea is being judged from only a title.</span></div></div>
+          <div class="check"><span class="tick">✓</span><div><strong>Everyone rated every idea</strong><span>The scoreboard shows 4/4 ratings per row.</span></div></div>
+          <div class="check"><span class="tick">✓</span><div><strong>Every idea was presented</strong><span>The presentation tracker is fully complete.</span></div></div>
+          <div class="check"><span class="tick">✓</span><div><strong>Council disagreement was discussed</strong><span>The Contrarian view received real attention.</span></div></div>
+          <div class="check"><span class="tick">✓</span><div><strong>The group chose the next experiment</strong><span>A winner is only useful when it creates an action.</span></div></div>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head"><h2>If something looks wrong</h2><p>The app works locally without Supabase, but shared multi-laptop sessions and real council runs need their services configured.</p></div>
+        <details><summary>The four laptops do not show the same roster, rooms, or ratings.</summary><p>Use the deployed app with Supabase configured and apply the rooms, presentation-council, and idea-ratings migrations. Local preview mode stores room history only in that browser.</p></details>
+        <details><summary>The council review does not become ready.</summary><p>For local use, start SparkTank with <code>npm run dev</code> so the Vite council bridge can call the authenticated Codex CLI in the background. A deployed browser needs a reachable runner configured through <code>VITE_COUNCIL_ENDPOINT</code>.</p></details>
+        <details><summary>The scoreboard has fewer than four ratings.</summary><p>Each friend must claim their own seat, open Review, and save one rating for that idea. Updating a rating replaces only that friend’s previous rating.</p></details>
+      </section>
+
+      <div class="closing"><h2>Ready when all four friends are at the table.</h2><a class="open-app" href="/">Open SparkTank →</a></div>
+    </main>
+    <footer>SparkTank 1.5 · A shared idea-review room for four friends.</footer>
+  </body>
+</html>

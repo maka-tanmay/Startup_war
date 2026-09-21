@@ -17,11 +17,25 @@ export interface Idea {
   ownerId: string;
   groupScore?: number;
   scores?: {
-    innovation: number;
-    viability: number;
-    execution: number;
+    problem: number;
+    market: number;
+    differentiation: number;
+    feasibility: number;
   };
+  ratingCount?: number;
   comments?: Array<{ text: string; authorId: string }>;
+}
+
+export interface IdeaRating {
+  sessionId: string;
+  ideaId: string;
+  participantId: string;
+  problem: number;
+  market: number;
+  differentiation: number;
+  feasibility: number;
+  comment?: string;
+  updatedAt: string;
 }
 
 export interface Participant {

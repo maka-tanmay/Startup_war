@@ -11,6 +11,7 @@ Replace the fixed participant list with a user-managed roster while preserving S
 - As an organizer, I can correct a name or emoji without recreating the person.
 - As an organizer, I can remove a person and understand that their concepts will also be removed.
 - As a returning group, I can see shared roster data after it loads without a flash of incorrect defaults.
+- As a returning group, I can reopen Room 1 after creating Room 2 and find Room 1 unchanged.
 
 ## Functional requirements
 
@@ -19,7 +20,10 @@ Replace the fixed participant list with a user-managed roster while preserving S
 3. Persist additions, edits, and removals to Supabase when configured, otherwise to local storage.
 4. Keep the active participant object synchronized with roster updates.
 5. Prevent duplicate optimistic rows when Supabase realtime echoes an insert.
-6. Preserve all drafting, voting, and results behavior.
+6. Preserve drafting while naming the decision stages plainly: Review, Present, and Scoreboard.
+7. Store one four-criterion rating per friend and idea, then aggregate the group score without overwriting earlier reviewers.
+8. Scope people, ideas, ratings, presentation progress, and council results to a saved room.
+9. Migrate legacy local and Supabase data into Room 1 rather than discarding it.
 
 ## Design requirements
 
@@ -35,4 +39,5 @@ Replace the fixed participant list with a user-managed roster while preserving S
 - TypeScript and production build complete successfully.
 - Lobby flow is exercised in a browser at desktop and mobile widths.
 - Add, duplicate validation, edit, select, and remove behaviors are checked.
+- Create Room 2, switch back to Room 1, reload, and confirm both histories remain available.
 - Final screenshots are reviewed against the direction contract.

@@ -17,6 +17,10 @@ export default defineConfig({
   plugins: [react(), councilBridge],
   build: {
     rolldownOptions: {
+      input: {
+        app: 'index.html',
+        guide: 'guide.html',
+      },
       output: {
         codeSplitting: {
           minSize: 20_000,

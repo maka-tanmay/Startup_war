@@ -2,11 +2,11 @@
 
 ## Intent
 
-After every participant has presented, SparkTank should run the competing startup concepts through an LLM Council and reveal its recommendation alongside the group's own result. The council is a second opinion and a source of contrarian pressure, not a replacement for human voting.
+As soon as a titled idea is saved, SparkTank should begin an LLM Council run in the background. The recommendation stays sealed until the group explicitly clicks `Show council reviews`. The council is a second opinion and a source of contrarian pressure, not a replacement for human voting.
 
 Reference implementation: [aiwithremy/claude-skills-llm-council](https://github.com/aiwithremy/claude-skills-llm-council)
 
-Implementation lives in `src/components/PresentationCouncil.tsx`; the CLI orchestration lives in `server/councilRunner.mjs`. Supabase synchronization is defined in `supabase/migrations/20260921000000_presentation_council.sql`.
+Implementation lives in `src/components/PresentationCouncil.tsx`; the CLI orchestration lives in `server/councilRunner.mjs`. Supabase synchronization is defined in `supabase/migrations/20260921000000_presentation_council.sql`, with room ownership added by `supabase/migrations/20260921020000_rooms.sql`.
 
 ## Presentation flow
 
@@ -14,11 +14,11 @@ Implementation lives in `src/components/PresentationCouncil.tsx`; the CLI orches
 2. Provide a dropdown for the host to select the participant or concept currently presenting.
 3. Show that concept's complete pitch in a focused, projector-friendly slide.
 4. Let the host mark a presentation complete and move to the next entry.
-5. Keep the council result hidden while any eligible presentation remains incomplete.
-6. Once everyone has presented, enable a single `Run LLM Council` action.
-7. When the run completes, reveal the council verdict, the five advisor views, and the existing human ranking together.
+5. Start or refresh the council automatically after the saved idea input settles; do not wait for the presentation round.
+6. Keep deliberation and the completed result hidden until every presentation is complete, then unlock a single `Show council reviews` action.
+7. When the group reveals it, show the council verdict, the five advisor views, and the existing human ranking together.
 
-The dropdown is a presentation-control device, not the mechanism for choosing the winner. Its entries should show completion state, preserve the original roster/concept order, and make the next unpresented entry easy to find.
+The dropdown is a presentation-control device, not the mechanism for choosing the winner. Its entries should show completion state, follow a neutral deterministic shuffle shared across laptops, and make the next unpresented entry easy to find. Progress and council output are keyed by the active room so a later session cannot overwrite an earlier decision.
 
 ## Council method
 
@@ -111,14 +111,15 @@ type CouncilRun = {
 };
 ```
 
-The final schema should attach progress and council runs to an explicit session identifier; the current globally shared rows are not sufficient isolation for repeat sessions.
+Progress and council runs use the active room id as their session identifier, so repeat sessions retain separate histories.
 
 ## Acceptance criteria
 
 - The host can select any eligible presentation from a keyboard-accessible dropdown.
 - Every presentation has a visible `not started`, `presenting`, or `complete` state.
-- The council action is unavailable until all eligible presentations are complete.
-- Exactly one council run is created for one input snapshot unless the host explicitly requests a rerun.
+- A titled idea automatically creates one background council run for its stable input snapshot, including when it is the only concept.
+- Council output is not visible until every eligible idea is presented and the group explicitly clicks `Show council reviews`.
+- Exactly one automatic council run is attempted for one input snapshot unless the host explicitly requests a rerun.
 - Every connected participant sees the same run status and completed result.
 - The result shows all five named perspectives and the chairman synthesis.
 - The Contrarian view is visible without searching through raw output.

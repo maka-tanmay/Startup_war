@@ -30,7 +30,7 @@
 .council-notice { display: flex; align-items: center; gap: .45rem; padding: .65rem .75rem; color: #713f12; border: 2px solid #a16207; background: #fef3c7; box-shadow: 2px 2px 0 #a16207; font-size: .68rem; }
 .council-notice svg { width: .9rem; }
 
-.pitch-stage { display: grid; grid-template-columns: minmax(0,1fr) 17rem; min-height: 33rem; border: 2px solid var(--ink); background: white; box-shadow: var(--shadow-lg); overflow: hidden; }
+.pitch-stage { display: grid; grid-template-columns: minmax(0,1fr) 17rem; min-height: 40rem; border: 2px solid var(--ink); background: white; box-shadow: var(--shadow-lg); overflow: hidden; }
 .pitch-canvas { position: relative; display: flex; min-width: 0; flex-direction: column; padding: clamp(1.5rem,4vw,3.5rem); overflow: hidden; }
 .pitch-canvas::after { content: ''; position: absolute; right: -10rem; top: -10rem; width: 24rem; height: 24rem; border: 2px solid #cbd5e1; border-radius: 50%; box-shadow: 0 0 0 3.5rem #f8fafc, 0 0 0 3.65rem #e2e8f0; pointer-events: none; }
 .pitch-owner { position: relative; z-index: 1; display: flex; align-items: center; gap: .6rem; }
@@ -39,12 +39,12 @@
 .pitch-owner > div { display: flex; flex-direction: column; }
 .pitch-owner span { font-size: .74rem; font-weight: 800; }
 .pitch-owner small { margin-top: .12rem; color: var(--muted); font-size: .56rem; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
-.pitch-canvas h3 { position: relative; z-index: 1; max-width: 12ch; margin: auto 0 .95rem; font-size: clamp(3.5rem,8vw,6.4rem); line-height: .83; text-wrap: balance; }
-.pitch-statement { position: relative; z-index: 1; max-width: 42rem; margin: 0 0 auto; color: var(--ink-soft); font-size: clamp(1rem,2vw,1.3rem); font-weight: 500; line-height: 1.5; }
-.pitch-thesis-grid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(4,1fr); gap: .7rem; margin-top: 2.5rem; padding-top: 1rem; border-top: 2px solid var(--ink); }
+.pitch-canvas h3 { position: relative; z-index: 1; max-width: 12ch; margin: 2.5rem 0 .95rem; font-size: clamp(3.5rem,8vw,6.4rem); line-height: .83; text-wrap: balance; }
+.pitch-statement { position: relative; z-index: 1; max-width: 42rem; margin: 0 0 2rem; color: var(--ink-soft); font-size: clamp(1rem,2vw,1.3rem); font-weight: 500; line-height: 1.5; }
+.pitch-thesis-grid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(3,1fr); gap: 1rem; margin-top: auto; padding-top: 1rem; border-top: 2px solid var(--ink); }
 .pitch-thesis-grid > div { display: flex; align-items: flex-start; gap: .4rem; min-width: 0; }
 .pitch-thesis-grid svg { width: .85rem; flex: 0 0 auto; }
-.pitch-thesis-grid span { display: -webkit-box; overflow: hidden; color: var(--ink-soft); font-size: .72rem; line-height: 1.4; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.pitch-thesis-grid span { color: var(--ink-soft); font-size: .72rem; line-height: 1.4; }
 .pitch-thesis-grid small { display: block; margin-bottom: .18rem; color: var(--muted); font-size: .62rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
 .pitch-control { display: flex; flex-direction: column; gap: 1.3rem; padding: 1.25rem; border-left: 2px solid var(--ink); background: #f8fafc; }
 .control-status { display: flex; align-items: center; gap: .35rem; color: var(--muted); font-size: .62rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
@@ -73,6 +73,9 @@
 .council-run-button { display: flex; align-items: center; justify-content: center; gap: .45rem; min-width: 11.5rem; min-height: 2.75rem; padding: 0 .85rem; color: var(--ink); border: 2px solid var(--ink); background: var(--signal); box-shadow: 3px 3px 0 var(--ink); font-size: .65rem; font-weight: 850; }
 .council-run-button:disabled { color: #94a3b8; border-color: #94a3b8; background: #e2e8f0; box-shadow: none; }
 .council-run-button svg { width: .9rem; }
+.council-actions { display: flex; align-items: center; gap: .55rem; }
+.council-rerun-button { display: inline-flex; align-items: center; justify-content: center; gap: .35rem; min-height: 2.75rem; padding: 0 .7rem; color: var(--ink); border: 1.5px solid var(--ink); background: white; font-size: .65rem; font-weight: 800; }
+.council-rerun-button svg { width: .8rem; }
 .spin { animation: council-spin 1.1s linear infinite; }
 
 .council-loading, .council-error { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 1rem; padding: 1.25rem; border: 2px solid var(--ink); background: white; box-shadow: var(--shadow-sm); }
@@ -167,7 +170,8 @@
   .pitch-control { border-top: 2px solid var(--ink); border-left: 0; }
   .stage-action { margin-top: 0; }
   .council-gate { align-items: stretch; flex-direction: column; }
-  .council-run-button { width: 100%; }
+  .council-actions { align-items: stretch; flex-direction: column; }
+  .council-run-button, .council-rerun-button { width: 100%; }
   .council-loading, .council-error { grid-template-columns: auto 1fr; }
   .deliberation-steps { grid-column: 1 / -1; }
 }

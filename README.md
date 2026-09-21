@@ -1,6 +1,10 @@
 # SparkTank
 
-SparkTank is a shared startup-idea session: build a roster, draft concepts, score them, present them, and compare the group's ranking with an independent LLM Council.
+SparkTank is a shared startup-idea session for four friends: build a roster, draft concepts, independently review them across four criteria, present them in a randomized order, and compare the human scoreboard with an independent LLM Council.
+
+Open [`/guide.html`](guide.html) for the complete facilitator and participant walkthrough.
+
+Each decision session is stored as its own room. The Lobby’s **Saved room** selector reopens earlier people, drafts, ratings, presentation progress, and council output; **New room** starts a separate history without erasing the previous room.
 
 ## Run locally
 
@@ -9,7 +13,7 @@ npm install
 npm run dev
 ```
 
-Open the local URL printed by Vite. The development server exposes `/api/council` and invokes the installed Codex CLI when the presentation round requests a verdict.
+Open the local URL printed by Vite. The development server exposes `/api/council` and invokes the installed Codex CLI in the background after a titled idea is saved. The result remains sealed in the interface until someone clicks `Show council reviews`.
 
 The council follows the [LLM Council methodology](https://github.com/aiwithremy/claude-skills-llm-council): five independent advisor calls run in parallel, five anonymous peer reviews run in parallel, and a final chairman call returns a structured verdict.
 
@@ -47,7 +51,11 @@ Apply [the presentation council migration](supabase/migrations/20260921000000_pr
 - `presentation_progress`
 - `council_runs`
 
-The current application uses one shared session id (`spark-tank-main`) to match its existing globally shared participants and ideas. Introduce explicit session ownership before exposing the app to untrusted public groups.
+Apply [the idea ratings migration](supabase/migrations/20260921010000_idea_ratings.sql) so each friend’s per-idea rating syncs independently instead of overwriting another reviewer.
+
+Apply [the rooms migration](supabase/migrations/20260921020000_rooms.sql) to separate session history. It creates `rooms`, adds `room_id` ownership to participants and ideas, and moves existing shared data into Room 1.
+
+Without Supabase, the same room separation is stored in the current browser. Browser-local rooms do not sync to other laptops.
 
 ## Verify
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowRight,
@@ -35,10 +35,19 @@ import type {
 } from '../types/council';
 import './presentation-council.css';
 
-const SESSION_ID = 'spark-tank-main';
-const PROGRESS_STORAGE_KEY = 'spark-tank-presentation-progress-v1';
-const RUN_STORAGE_KEY = 'spark-tank-council-run-v1';
 const WORKFLOW_VERSION = 'llm-council-v1';
+
+const progressStorageKey = (sessionId: string) => `spark-tank-room:${sessionId}:presentation-progress`;
+const runStorageKey = (sessionId: string) => `spark-tank-room:${sessionId}:council-run`;
+
+function presentationRank(sessionId: string, id: string) {
+  let hash = 2166136261;
+  for (const character of `${sessionId}:${id}`) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
 
 const advisorMeta: Array<{ key: AdvisorKey; label: string; remit: string; icon: typeof ShieldAlert }> = [
   { key: 'contrarian', label: 'Contrarian', remit: 'What could make the favorite fail?', icon: ShieldAlert },
@@ -48,22 +57,39 @@ const advisorMeta: Array<{ key: AdvisorKey; label: string; remit: string; icon: 
   { key: 'executor', label: 'Executor', remit: 'What can we prove and ship first?', icon: Zap }
 ];
 
-function readStoredProgress(): Record<string, PresentationProgress> {
+function readStoredProgress(sessionId: string): Record<string, PresentationProgress> {
   try {
-    return JSON.parse(localStorage.getItem(PROGRESS_STORAGE_KEY) || '{}');
+    const scopedKey = progressStorageKey(sessionId);
+    const scoped = localStorage.getItem(scopedKey);
+    if (scoped) return JSON.parse(scoped);
+    if (sessionId === 'room-1') {
+      const legacy = localStorage.getItem('spark-tank-presentation-progress-v1');
+      if (legacy) {
+        localStorage.setItem(scopedKey, legacy);
+        return JSON.parse(legacy);
+      }
+    }
+    return {};
   } catch {
     return {};
   }
 }
 
-function readStoredRun(): CouncilRun {
+function readStoredRun(sessionId: string): CouncilRun {
   try {
-    const stored = JSON.parse(localStorage.getItem(RUN_STORAGE_KEY) || 'null');
-    if (stored?.sessionId === SESSION_ID) return stored;
+    const scopedKey = runStorageKey(sessionId);
+    let serialized = localStorage.getItem(scopedKey);
+    if (!serialized && sessionId === 'room-1') {
+      serialized = localStorage.getItem('spark-tank-council-run-v1');
+      if (serialized) localStorage.setItem(scopedKey, serialized);
+    }
+    const stored = JSON.parse(serialized || 'null');
+    if (stored?.sessionId === 'spark-tank-main' && sessionId === 'room-1') return { ...stored, sessionId };
+    if (stored?.sessionId === sessionId) return stored;
   } catch {
     // Fall through to a clean local run.
   }
-  return { id: '', sessionId: SESSION_ID, status: 'idle', inputHash: '', workflowVersion: WORKFLOW_VERSION };
+  return { id: '', sessionId, status: 'idle', inputHash: '', workflowVersion: WORKFLOW_VERSION };
 }
 
 function normalizeProgressRow(row: Record<string, unknown>): PresentationProgress {
@@ -75,10 +101,10 @@ function normalizeProgressRow(row: Record<string, unknown>): PresentationProgres
   };
 }
 
-function normalizeRunRow(row: Record<string, unknown>): CouncilRun {
+function normalizeRunRow(row: Record<string, unknown>, sessionId: string): CouncilRun {
   return {
     id: String(row.id || ''),
-    sessionId: String(row.session_id || SESSION_ID),
+    sessionId: String(row.session_id || sessionId),
     status: String(row.status || 'idle') as CouncilRun['status'],
     inputHash: String(row.input_hash || ''),
     workflowVersion: String(row.workflow_version || WORKFLOW_VERSION),
@@ -96,24 +122,39 @@ async function hashInput(input: CouncilConceptInput[]) {
 }
 
 interface PresentationCouncilProps {
+  sessionId: string;
   ideas: Idea[];
   participants: Participant[];
   isConfigured: boolean;
   onViewResults: () => void;
+  autoRun?: boolean;
+  demoMode?: boolean;
 }
 
-export default function PresentationCouncil({ ideas, participants, isConfigured, onViewResults }: PresentationCouncilProps) {
+export default function PresentationCouncil({ sessionId, ideas, participants, isConfigured, onViewResults, autoRun = true, demoMode = false }: PresentationCouncilProps) {
   const reduceMotion = useReducedMotion();
-  const eligibleIdeas = useMemo(() => ideas.filter(idea => idea.title.trim()).sort((a, b) => a.id.localeCompare(b.id)), [ideas]);
+  const eligibleIdeas = useMemo(() => ideas.filter(idea => idea.title.trim()).sort((a, b) => presentationRank(sessionId, a.id) - presentationRank(sessionId, b.id) || a.id.localeCompare(b.id)), [ideas, sessionId]);
   const [selectedIdeaId, setSelectedIdeaId] = useState(() => eligibleIdeas[0]?.id || '');
-  const [progress, setProgress] = useState<Record<string, PresentationProgress>>(readStoredProgress);
-  const [councilRun, setCouncilRun] = useState<CouncilRun>(readStoredRun);
+  const [progress, setProgress] = useState<Record<string, PresentationProgress>>(() => readStoredProgress(sessionId));
+  const [councilRun, setCouncilRun] = useState<CouncilRun>(() => readStoredRun(sessionId));
   const [currentInputHash, setCurrentInputHash] = useState('');
   const [syncNotice, setSyncNotice] = useState('');
+  const [reviewsVisible, setReviewsVisible] = useState(false);
+  const autoRunTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const attemptedHashes = useRef(new Set<string>());
 
   const participantById = useMemo(() => new Map(participants.map(participant => [participant.id, participant])), [participants]);
   const selectedIdea = eligibleIdeas.find(idea => idea.id === selectedIdeaId) || eligibleIdeas[0];
   const selectedOwner = selectedIdea ? participantById.get(selectedIdea.ownerId) : undefined;
+
+  useEffect(() => {
+    setSelectedIdeaId(eligibleIdeas[0]?.id || '');
+    setProgress(readStoredProgress(sessionId));
+    setCouncilRun(readStoredRun(sessionId));
+    setReviewsVisible(false);
+    setSyncNotice('');
+    attemptedHashes.current.clear();
+  }, [sessionId]);
 
   const conceptInput = useMemo<CouncilConceptInput[]>(() => normalizeCouncilConcepts(eligibleIdeas.map(idea => ({
     id: idea.id,
@@ -140,12 +181,12 @@ export default function PresentationCouncil({ ideas, participants, isConfigured,
   }, [eligibleIdeas, selectedIdeaId]);
 
   useEffect(() => {
-    localStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify(progress));
-  }, [progress]);
+    localStorage.setItem(progressStorageKey(sessionId), JSON.stringify(progress));
+  }, [progress, sessionId]);
 
   useEffect(() => {
-    localStorage.setItem(RUN_STORAGE_KEY, JSON.stringify(councilRun));
-  }, [councilRun]);
+    localStorage.setItem(runStorageKey(sessionId), JSON.stringify(councilRun));
+  }, [councilRun, sessionId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -154,13 +195,48 @@ export default function PresentationCouncil({ ideas, participants, isConfigured,
   }, [conceptInput]);
 
   useEffect(() => {
+    if (!demoMode || !currentInputHash || eligibleIdeas.length === 0) return;
+    const recommended = eligibleIdeas.find(idea => idea.title === 'ProofPilot') || eligibleIdeas[0];
+    setProgress(Object.fromEntries(eligibleIdeas.map(idea => [idea.id, {
+      ideaId: idea.id,
+      presenterId: idea.ownerId,
+      status: 'complete' as const,
+      completedAt: '2026-09-21T12:00:00.000Z'
+    }])));
+    setCouncilRun({
+      id: 'guide-council-run',
+      sessionId,
+      status: 'complete',
+      inputHash: currentInputHash,
+      workflowVersion: WORKFLOW_VERSION,
+      completedAt: '2026-09-21T12:00:00.000Z',
+      result: {
+        recommendedIdeaId: recommended.id,
+        recommendedIdeaTitle: recommended.title,
+        advisorViews: {
+          contrarian: 'The favorite still needs evidence that customers will change their current behavior.',
+          firstPrinciples: 'The strongest concept targets a specific costly decision rather than a broad aspiration.',
+          expansionist: 'The evidence workflow could become a reusable operating system for early product teams.',
+          outsider: 'Explain the first customer moment without relying on startup vocabulary.',
+          executor: 'Run a paid manual pilot before building the full workflow.'
+        },
+        agreement: ['Test willingness to pay before expanding the product.'],
+        clashes: ['The upside is meaningful, but repeatable delivery is not yet proven.'],
+        blindSpots: ['Current alternatives and switching friction need direct customer evidence.'],
+        recommendation: 'Start with the concept that can produce credible customer evidence fastest.',
+        firstAction: 'Recruit three target customers for a paid manual pilot.'
+      }
+    });
+  }, [currentInputHash, demoMode, eligibleIdeas, sessionId]);
+
+  useEffect(() => {
     if (!isConfigured) return;
     let active = true;
 
     const loadCouncilState = async () => {
       const [progressResponse, runResponse] = await Promise.all([
-        supabase.from('presentation_progress').select('*').eq('session_id', SESSION_ID),
-        supabase.from('council_runs').select('*').eq('session_id', SESSION_ID).order('started_at', { ascending: false }).limit(1)
+        supabase.from('presentation_progress').select('*').eq('session_id', sessionId),
+        supabase.from('council_runs').select('*').eq('session_id', sessionId).order('started_at', { ascending: false }).limit(1)
       ]);
 
       if (!active) return;
@@ -173,19 +249,19 @@ export default function PresentationCouncil({ ideas, participants, isConfigured,
           }))
         }));
       }
-      if (!runResponse.error && runResponse.data?.[0]) setCouncilRun(normalizeRunRow(runResponse.data[0]));
+      if (!runResponse.error && runResponse.data?.[0]) setCouncilRun(normalizeRunRow(runResponse.data[0], sessionId));
     };
 
     loadCouncilState();
     const channel = supabase
-      .channel(`council-state-${SESSION_ID}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'presentation_progress', filter: `session_id=eq.${SESSION_ID}` }, payload => {
+      .channel(`council-state-${sessionId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'presentation_progress', filter: `session_id=eq.${sessionId}` }, payload => {
         if (payload.eventType === 'DELETE') return;
         const item = normalizeProgressRow(payload.new as Record<string, unknown>);
         setProgress(previous => ({ ...previous, [item.ideaId]: item }));
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'council_runs', filter: `session_id=eq.${SESSION_ID}` }, payload => {
-        if (payload.eventType !== 'DELETE') setCouncilRun(normalizeRunRow(payload.new as Record<string, unknown>));
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'council_runs', filter: `session_id=eq.${sessionId}` }, payload => {
+        if (payload.eventType !== 'DELETE') setCouncilRun(normalizeRunRow(payload.new as Record<string, unknown>, sessionId));
       })
       .subscribe();
 
@@ -193,24 +269,27 @@ export default function PresentationCouncil({ ideas, participants, isConfigured,
       active = false;
       supabase.removeChannel(channel);
     };
-  }, [isConfigured]);
+  }, [isConfigured, sessionId]);
 
   const completedCount = eligibleIdeas.filter(idea => progress[idea.id]?.status === 'complete').length;
-  const allPresented = eligibleIdeas.length > 0 && completedCount === eligibleIdeas.length;
-  const hasComparisonField = eligibleIdeas.length >= 2;
-  const gateUnlocked = allPresented && hasComparisonField;
+  const hasCouncilInput = eligibleIdeas.length > 0;
+  const allPresented = hasCouncilInput && completedCount === eligibleIdeas.length;
   const currentStatus = selectedIdea ? progress[selectedIdea.id]?.status || 'not_started' : 'not_started';
   const isStale = councilRun.status === 'complete' && Boolean(currentInputHash) && councilRun.inputHash !== currentInputHash;
-  const councilReady = gateUnlocked && Boolean(currentInputHash);
+  const councilReady = hasCouncilInput && Boolean(currentInputHash);
   const humanWinner = useMemo(() => [...eligibleIdeas]
     .filter(idea => idea.groupScore !== undefined)
     .sort((a, b) => (b.groupScore || 0) - (a.groupScore || 0))[0], [eligibleIdeas]);
+
+  useEffect(() => {
+    if (!allPresented) setReviewsVisible(false);
+  }, [allPresented]);
 
   const persistProgress = async (item: PresentationProgress) => {
     setProgress(previous => ({ ...previous, [item.ideaId]: item }));
     if (!isConfigured) return;
     const { error } = await supabase.from('presentation_progress').upsert({
-      session_id: SESSION_ID,
+      session_id: sessionId,
       idea_id: item.ideaId,
       presenter_id: item.presenterId,
       status: item.status,
@@ -256,42 +335,89 @@ export default function PresentationCouncil({ ideas, participants, isConfigured,
     if (next) setSelectedIdeaId(next.id);
   };
 
-  const runCouncil = async () => {
+  const runCouncil = useCallback(async (force = false) => {
     if (!councilReady) return;
+    setReviewsVisible(false);
     const startedAt = new Date().toISOString();
-    const running: CouncilRun = {
-      id: `council-${currentInputHash.slice(0, 16)}`,
-      sessionId: SESSION_ID,
-      status: 'running',
+    const baseRun: CouncilRun = {
+      id: `council-${sessionId.replace(/[^a-z0-9-]/gi, '').slice(0, 16)}-${currentInputHash.slice(0, 16)}`,
+      sessionId,
+      status: isConfigured ? 'queued' : 'running',
       inputHash: currentInputHash,
       workflowVersion: WORKFLOW_VERSION,
       startedAt
     };
-    await persistRun(running);
     setSyncNotice('');
+
+    if (isConfigured) {
+      setCouncilRun(baseRun);
+      const { error } = await supabase.from('council_runs').upsert({
+        id: baseRun.id,
+        session_id: baseRun.sessionId,
+        status: 'queued',
+        input_hash: baseRun.inputHash,
+        workflow_version: baseRun.workflowVersion,
+        started_at: baseRun.startedAt,
+        completed_at: null,
+        error: null,
+        result: null
+      }, { onConflict: 'id', ignoreDuplicates: !force });
+
+      if (error) {
+        setCouncilRun({ ...baseRun, status: 'failed', error: 'The council request could not be synced to the host laptop.' });
+        setSyncNotice('Council request could not be queued. Check the Supabase council migration and connection.');
+        return;
+      }
+
+      const { data } = await supabase.from('council_runs').select('*').eq('id', baseRun.id).maybeSingle();
+      if (data) setCouncilRun(normalizeRunRow(data, sessionId));
+      return;
+    }
+
+    await persistRun(baseRun);
 
     try {
       const response = await fetch(import.meta.env.VITE_COUNCIL_ENDPOINT || '/api/council', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: SESSION_ID, inputHash: currentInputHash, concepts: conceptInput })
+        body: JSON.stringify({ sessionId, inputHash: currentInputHash, concepts: conceptInput })
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || 'The CLI council runner did not complete.');
       await persistRun({
-        ...running,
+        ...baseRun,
         status: 'complete',
         completedAt: payload.completedAt || new Date().toISOString(),
         result: payload.result as CouncilResult
       });
     } catch (error) {
       await persistRun({
-        ...running,
+        ...baseRun,
         status: 'failed',
         error: error instanceof Error ? error.message : 'The council run failed.'
       });
     }
-  };
+  }, [conceptInput, councilReady, currentInputHash, isConfigured, sessionId]);
+
+  useEffect(() => {
+    if (!autoRun || !councilReady || councilRun.status === 'running') return;
+    if (councilRun.status === 'complete' && councilRun.inputHash === currentInputHash) return;
+    if (attemptedHashes.current.has(currentInputHash)) return;
+
+    if (autoRunTimer.current) clearTimeout(autoRunTimer.current);
+    autoRunTimer.current = setTimeout(() => {
+      autoRunTimer.current = null;
+      attemptedHashes.current.add(currentInputHash);
+      void runCouncil();
+    }, 1600);
+
+    return () => {
+      if (autoRunTimer.current) {
+        clearTimeout(autoRunTimer.current);
+        autoRunTimer.current = null;
+      }
+    };
+  }, [autoRun, councilReady, councilRun.inputHash, councilRun.status, currentInputHash, runCouncil]);
 
   if (eligibleIdeas.length === 0) {
     return (
@@ -320,7 +446,7 @@ export default function PresentationCouncil({ ideas, participants, isConfigured,
       <header className="presentation-commandbar">
         <div className="presentation-title">
           <div className="presentation-title-icon"><Users /></div>
-          <div><h2>Present the field</h2><p>Every voice first. Council judgment second.</p></div>
+          <div><h2>Present the field</h2><p>Random order. Every idea gets the room before judgment.</p></div>
         </div>
         <div className="presentation-selector">
           <label htmlFor="presentation-idea">On stage</label>
@@ -342,7 +468,7 @@ export default function PresentationCouncil({ ideas, participants, isConfigured,
         </div>
       </header>
 
-      <div className="presentation-stepper" aria-label="Presentation completion">
+      <div className="presentation-stepper" aria-label="Randomized presentation order and completion">
         {eligibleIdeas.map(idea => {
           const state = progress[idea.id]?.status || 'not_started';
           const owner = participantById.get(idea.ownerId);
@@ -370,6 +496,8 @@ export default function PresentationCouncil({ ideas, participants, isConfigured,
             <div><Users /><span><small>First customer</small>{selectedIdea?.targetCustomer || 'Not specified'}</span></div>
             <div><Gauge /><span><small>Revenue engine</small>{selectedIdea?.revenueModel || 'Not specified'}</span></div>
             <div><Sparkles /><span><small>Unfair advantage</small>{selectedIdea?.unfairAdvantage || 'Not specified'}</span></div>
+            <div><ShieldAlert /><span><small>Biggest risk</small>{selectedIdea?.biggestRisk || 'Not specified'}</span></div>
+            <div><Lightbulb /><span><small>Presenter notes</small>{selectedIdea?.notes || 'No extra notes'}</span></div>
           </div>
         </article>
 
@@ -377,12 +505,15 @@ export default function PresentationCouncil({ ideas, participants, isConfigured,
           <div>
             <span className="control-status"><span className={`status-dot status-${currentStatus}`} />{currentStatus.replace('_', ' ')}</span>
             <h3>Host controls</h3>
-            <p>Keep the council locked until every concept has had the room.</p>
+            <p>Track the room here. The council is already working from the saved idea data.</p>
           </div>
           <dl>
+            <div><dt>Category</dt><dd>{selectedIdea?.category || 'Other'}</dd></div>
             <div><dt>Launch window</dt><dd>{selectedIdea?.timeToLaunch || 'Unknown'}</dd></div>
             <div><dt>Starting cost</dt><dd>{selectedIdea?.startupCost || 'Unknown'}</dd></div>
-            <div><dt>Market</dt><dd>{selectedIdea?.marketSize || 'Unknown'}</dd></div>
+            <div><dt>Market size</dt><dd>{selectedIdea?.marketSize || 'Unknown'}</dd></div>
+            <div><dt>Founder momentum</dt><dd>{selectedIdea?.excitement || 0}/10</dd></div>
+            <div><dt>Build feasibility</dt><dd>{selectedIdea?.feasibility || 0}/10</dd></div>
           </dl>
           {currentStatus === 'not_started' && <button type="button" className="stage-action" onClick={beginPresentation}><Play /> Begin presentation</button>}
           {currentStatus === 'presenting' && <button type="button" className="stage-action" onClick={completePresentation}><Check /> Mark complete</button>}
@@ -390,20 +521,35 @@ export default function PresentationCouncil({ ideas, participants, isConfigured,
         </aside>
       </div>
 
-      <section className={`council-gate ${gateUnlocked ? 'is-unlocked' : ''}`}>
+      <section className={`council-gate ${councilRun.status === 'complete' && !isStale && allPresented ? 'is-unlocked' : ''}`}>
         <div className="gate-copy">
-          <div className="gate-icon">{gateUnlocked ? <BrainCircuit /> : <Scale />}</div>
+          <div className="gate-icon">{councilRun.status === 'complete' && !isStale && allPresented ? <BrainCircuit /> : <Scale />}</div>
           <div>
-            <h3>{gateUnlocked ? 'The council is unlocked' : allPresented ? 'The council needs another concept' : `${eligibleIdeas.length - completedCount} presentation${eligibleIdeas.length - completedCount === 1 ? '' : 's'} before judgment`}</h3>
-            <p>{gateUnlocked ? 'Five independent advisors, anonymous peer review, then one chairman verdict.' : allPresented ? 'Add one more titled concept so the council has a real decision to compare.' : 'The result stays hidden so later presenters are not anchored by an early favorite.'}</p>
+            <h3>{councilRun.status === 'complete' && !isStale ? (allPresented ? 'The council is ready' : 'The council review is sealed') : councilRun.status === 'failed' ? 'The council needs another try' : 'The council is working in the background'}</h3>
+            <p>{councilRun.status === 'complete' && !isStale ? (allPresented ? 'Every idea was heard. You can now reveal the independent review.' : `Complete all presentations first — ${completedCount} of ${eligibleIdeas.length} are done.`) : 'It starts from the saved idea data and remains hidden while the room works.'}</p>
           </div>
         </div>
-        <button type="button" className="council-run-button" disabled={!councilReady || councilRun.status === 'running'} onClick={runCouncil}>
-          {councilRun.status === 'running' ? <><LoaderCircle className="spin" /> Council deliberating</> : councilRun.status === 'complete' && !isStale ? <><RefreshCw /> Run council again</> : <><BrainCircuit /> Run LLM Council</>}
-        </button>
+        <div className="council-actions">
+          {councilRun.status === 'complete' && councilRun.result && !isStale && allPresented ? (
+            <>
+              <button type="button" className="council-run-button" onClick={() => setReviewsVisible(visible => !visible)}>
+                <Eye /> {reviewsVisible ? 'Hide council reviews' : 'Show council reviews'}
+              </button>
+              {reviewsVisible && <button type="button" className="council-rerun-button" onClick={() => runCouncil(true)}><RefreshCw /> Run again</button>}
+            </>
+          ) : councilRun.status === 'complete' && councilRun.result && !isStale ? (
+            <button type="button" className="council-run-button" disabled><Users /> {completedCount}/{eligibleIdeas.length} presented</button>
+          ) : councilRun.status === 'failed' ? (
+            <button type="button" className="council-run-button" disabled={!councilReady} onClick={() => runCouncil(true)}><RefreshCw /> Retry council</button>
+          ) : (
+            <button type="button" className="council-run-button" disabled>
+              {councilRun.status === 'running' || councilReady ? <><LoaderCircle className="spin" /> Preparing council</> : <><BrainCircuit /> Add a titled idea</>}
+            </button>
+          )}
+        </div>
       </section>
 
-      {councilRun.status === 'running' && (
+      {reviewsVisible && councilRun.status === 'running' && (
         <section className="council-loading" aria-live="polite">
           <div className="deliberation-orbit"><BrainCircuit /><span /><span /></div>
           <div><h3>The room is deliberating</h3><p>Five advisors are comparing the concepts. Next comes anonymous peer review and a chairman synthesis.</p></div>
@@ -411,15 +557,15 @@ export default function PresentationCouncil({ ideas, participants, isConfigured,
         </section>
       )}
 
-      {councilRun.status === 'failed' && (
+      {reviewsVisible && councilRun.status === 'failed' && (
         <section className="council-error" role="alert">
           <AlertTriangle />
-          <div><h3>The council could not convene</h3><p>{councilRun.error}</p><small>Start SparkTank with <code>npm run dev</code> so the local Codex CLI bridge is available.</small></div>
-          <button type="button" onClick={runCouncil}><RefreshCw /> Retry</button>
+          <div><h3>The council could not convene</h3><p>{councilRun.error}</p><small>{isConfigured ? <>Keep the host laptop worker running with <code>npm run council:worker</code>.</> : <>Start SparkTank with <code>npm run dev</code> so the local Codex CLI bridge is available.</>}</small></div>
+          <button type="button" onClick={() => runCouncil(true)}><RefreshCw /> Retry</button>
         </section>
       )}
 
-      {gateUnlocked && councilRun.status === 'complete' && councilRun.result && (
+      {reviewsVisible && allPresented && !isStale && councilRun.status === 'complete' && councilRun.result && (
         <section className={`council-verdict ${isStale ? 'is-stale' : ''}`} aria-live="polite">
           {isStale && <div className="stale-banner"><AlertTriangle />Concepts changed after this verdict. Run the council again before deciding.</div>}
           <div className="verdict-hero">

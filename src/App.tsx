@@ -1,7 +1,9 @@
 import React, { lazy, Suspense, useState, useMemo, useEffect } from 'react';
-import { Participant, Idea, marketSizes } from './data/mockData';
+import { Participant, Idea, IdeaRating, marketSizes } from './data/mockData';
+import { guideIdeas, guideParticipants, guideRatings } from './data/guideDemo';
+import type { RoomSummary } from './types/room';
 import { supabase } from './lib/supabase';
-import { Rocket, Users, ChevronRight, Star, Trophy, Target, DollarSign, Clock, CheckCircle2, ChevronLeft, Zap, Sparkles, BrainCircuit, TrendingUp, Search, ShieldAlert, BadgeCheck, Coins, LayoutGrid, ArrowRight, MousePointer2, MessageSquare, Info, X, Lightbulb, BarChart3, Workflow, Plus, Trash2, Database, Save, RotateCcw, Wifi, WifiOff, Globe, AlertTriangle, ExternalLink, Terminal, UserPlus, Pencil } from 'lucide-react';
+import { Rocket, Users, ChevronRight, Star, Trophy, Target, DollarSign, Clock, CheckCircle2, ChevronLeft, Zap, Sparkles, BrainCircuit, TrendingUp, Search, ShieldAlert, BadgeCheck, Coins, LayoutGrid, ArrowRight, MousePointer2, MessageSquare, Info, X, Lightbulb, BarChart3, Workflow, Plus, Trash2, Database, Save, RotateCcw, Wifi, WifiOff, Globe, AlertTriangle, ExternalLink, Terminal, UserPlus, Pencil, CircleHelp } from 'lucide-react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -14,17 +16,71 @@ function cn(...inputs: ClassValue[]) {
 
 type Screen = 'LOBBY' | 'BRAINSTORM' | 'VOTE' | 'PRESENT' | 'SUMMARY';
 
+const DEFAULT_ROOM_ID = 'room-1';
+const ROOMS_STORAGE_KEY = 'spark-tank-rooms-v1';
+const ACTIVE_ROOM_STORAGE_KEY = 'spark-tank-active-room-v1';
+const MAX_FRIENDS = 4;
 const participantColors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
 const participantMoods = ['🔥', '🚀', '💡', '✨', '🎯', '⚡', '🌱'];
+
+const roomStorageKey = (roomId: string, collection: 'ideas' | 'participants' | 'ratings') => `spark-tank-room:${roomId}:${collection}`;
+
+function defaultRoom(): RoomSummary {
+  const timestamp = new Date().toISOString();
+  return { id: DEFAULT_ROOM_ID, name: 'Room 1', createdAt: timestamp, updatedAt: timestamp, participantCount: 0, ideaCount: 0 };
+}
+
+function normalizeRoomRow(row: Record<string, unknown>): RoomSummary {
+  return {
+    id: String(row.id || DEFAULT_ROOM_ID),
+    name: String(row.name || 'Untitled room'),
+    createdAt: String(row.created_at || row.createdAt || new Date().toISOString()),
+    updatedAt: String(row.updated_at || row.updatedAt || new Date().toISOString()),
+    participantCount: Number(row.participant_count || row.participantCount || 0),
+    ideaCount: Number(row.idea_count || row.ideaCount || 0)
+  };
+}
+
+function normalizeRatingRow(row: Record<string, unknown>, fallbackSessionId = DEFAULT_ROOM_ID): IdeaRating {
+  return {
+    sessionId: String(row.session_id || row.sessionId || fallbackSessionId),
+    ideaId: String(row.idea_id || row.ideaId || ''),
+    participantId: String(row.participant_id || row.participantId || ''),
+    problem: Number(row.problem || 0),
+    market: Number(row.market || 0),
+    differentiation: Number(row.differentiation || 0),
+    feasibility: Number(row.feasibility || 0),
+    comment: row.comment ? String(row.comment) : undefined,
+    updatedAt: String(row.updated_at || row.updatedAt || new Date().toISOString())
+  };
+}
+
+function readJson<T>(key: string, fallback: T): T {
+  try {
+    const value = localStorage.getItem(key);
+    return value ? JSON.parse(value) as T : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function getGuideStage(): Screen {
+  const stage = new URLSearchParams(window.location.search).get('stage');
+  if (stage === 'draft') return 'BRAINSTORM';
+  if (stage === 'review') return 'VOTE';
+  if (stage === 'present') return 'PRESENT';
+  if (stage === 'scores') return 'SUMMARY';
+  return 'LOBBY';
+}
 
 // --- SEPARATE HEADER COMPONENT ---
 const Header = ({ currentScreen, setCurrentScreen, activeParticipant, dbConnected, isConfigured }: any) => {
   const navItems = [
     { id: 'LOBBY', label: 'Lobby', shortLabel: 'Lobby' },
     { id: 'BRAINSTORM', label: 'Drafting', shortLabel: 'Draft' },
-    { id: 'VOTE', label: 'Battle', shortLabel: 'Battle' },
+    { id: 'VOTE', label: 'Review', shortLabel: 'Review' },
     { id: 'PRESENT', label: 'Present', shortLabel: 'Present' },
-    { id: 'SUMMARY', label: 'Results', shortLabel: 'Results' }
+    { id: 'SUMMARY', label: 'Scoreboard', shortLabel: 'Scores' }
   ];
 
   return (
@@ -61,6 +117,7 @@ const Header = ({ currentScreen, setCurrentScreen, activeParticipant, dbConnecte
       </nav>
 
       <div className="header-session">
+        <a className="guide-link" href="/guide.html" aria-label="Open how-to guide"><CircleHelp /><span>How to use</span></a>
         <div className={cn("sync-indicator", isConfigured && dbConnected ? "is-online" : "is-local")} title={isConfigured ? (dbConnected ? 'Shared sync is active' : 'Shared sync is offline') : 'Using local storage'}>
           <span className="sync-dot" />
           <span>{isConfigured ? (dbConnected ? 'Live' : 'Offline') : 'Local'}</span>
@@ -80,40 +137,96 @@ const Header = ({ currentScreen, setCurrentScreen, activeParticipant, dbConnecte
 };
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<Screen>('LOBBY');
-  const [activeParticipant, setActiveParticipant] = useState<Participant | null>(null);
-  const [ideas, setIdeas] = useState<Idea[]>([]);
-  const [participants, setParticipants] = useState<Participant[]>([]);
+  const guideMode = new URLSearchParams(window.location.search).get('guide') === '1';
+  const [currentScreen, setCurrentScreen] = useState<Screen>(() => guideMode ? getGuideStage() : 'LOBBY');
+  const [activeParticipant, setActiveParticipant] = useState<Participant | null>(() => guideMode ? guideParticipants[0] : null);
+  const [ideas, setIdeas] = useState<Idea[]>(() => guideMode ? guideIdeas : []);
+  const [participants, setParticipants] = useState<Participant[]>(() => guideMode ? guideParticipants : []);
+  const [ratings, setRatings] = useState<IdeaRating[]>(() => guideMode ? guideRatings : []);
+  const [rooms, setRooms] = useState<RoomSummary[]>(() => guideMode ? [{ ...defaultRoom(), id: 'guide-room', name: 'Room 1', participantCount: 4, ideaCount: 2 }] : [defaultRoom()]);
+  const [activeRoomId, setActiveRoomId] = useState(() => guideMode ? 'guide-room' : localStorage.getItem(ACTIVE_ROOM_STORAGE_KEY) || DEFAULT_ROOM_ID);
   const [votingIndex, setVotingIndex] = useState(0);
   const [dbConnected, setDbConnected] = useState(false);
-  const [isConfigured, setIsConfigured] = useState(false);
+  const [isConfigured, setIsConfigured] = useState(() => !guideMode && Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_URL !== 'YOUR_SUPABASE_URL'));
   const [hasLoadedData, setHasLoadedData] = useState(false);
 
-  // Check if Supabase is configured
+  const activeRoom = rooms.find(room => room.id === activeRoomId) || rooms[0];
+
+  // Detect shared mode. The guide uses stable demo data and never writes to storage.
   useEffect(() => {
+    if (guideMode) {
+      setHasLoadedData(true);
+      return;
+    }
     const isMock = !import.meta.env.VITE_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL === 'YOUR_SUPABASE_URL';
     setIsConfigured(!isMock);
-    
-    if (isMock) {
-      const savedIdeas = localStorage.getItem('spark-tank-ideas-local');
-      if (savedIdeas) setIdeas(JSON.parse(savedIdeas));
-      const savedParts = localStorage.getItem('spark-tank-participants-local');
-      if (savedParts) setParticipants(JSON.parse(savedParts));
-      setHasLoadedData(true);
+  }, [guideMode]);
+
+  // Load one room at a time in local preview mode. Legacy data becomes Room 1.
+  useEffect(() => {
+    if (guideMode || isConfigured) return;
+    setHasLoadedData(false);
+
+    let storedRooms = readJson<RoomSummary[]>(ROOMS_STORAGE_KEY, []);
+    if (storedRooms.length === 0) storedRooms = [defaultRoom()];
+
+    const scopedIdeasKey = roomStorageKey(activeRoomId, 'ideas');
+    const scopedParticipantsKey = roomStorageKey(activeRoomId, 'participants');
+    const scopedRatingsKey = roomStorageKey(activeRoomId, 'ratings');
+    if (activeRoomId === DEFAULT_ROOM_ID && !localStorage.getItem(scopedIdeasKey)) {
+      const legacyIdeas = readJson<Idea[]>('spark-tank-ideas-local', []);
+      const legacyParticipants = readJson<Participant[]>('spark-tank-participants-local', []);
+      const legacyRatings = readJson<IdeaRating[]>('spark-tank-ratings-local', []);
+      localStorage.setItem(scopedIdeasKey, JSON.stringify(legacyIdeas));
+      localStorage.setItem(scopedParticipantsKey, JSON.stringify(legacyParticipants));
+      localStorage.setItem(scopedRatingsKey, JSON.stringify(legacyRatings.map(rating => ({ ...rating, sessionId: DEFAULT_ROOM_ID }))));
     }
-  }, []);
+
+    const nextIdeas = readJson<Idea[]>(scopedIdeasKey, []);
+    const nextParticipants = readJson<Participant[]>(scopedParticipantsKey, []);
+    const nextRatings = readJson<IdeaRating[]>(scopedRatingsKey, []).map(rating => ({ ...rating, sessionId: activeRoomId }));
+    const roomExists = storedRooms.some(room => room.id === activeRoomId);
+    if (!roomExists) {
+      storedRooms = [...storedRooms, { ...defaultRoom(), id: activeRoomId, name: `Room ${storedRooms.length + 1}` }];
+    }
+    const nextRooms = storedRooms.map(room => room.id === activeRoomId
+      ? { ...room, participantCount: nextParticipants.length, ideaCount: nextIdeas.length }
+      : room);
+
+    setRooms(nextRooms);
+    setIdeas(nextIdeas);
+    setParticipants(nextParticipants);
+    setRatings(nextRatings);
+    setHasLoadedData(true);
+    localStorage.setItem(ROOMS_STORAGE_KEY, JSON.stringify(nextRooms));
+  }, [activeRoomId, guideMode, isConfigured]);
 
   // --- SUPABASE SYNC ENGINE ---
   useEffect(() => {
-    if (!isConfigured) return;
+    if (!isConfigured || guideMode) return;
+    setHasLoadedData(false);
 
     const fetchData = async () => {
       try {
-        const { data: ideasData } = await supabase.from('ideas').select('*');
-        const { data: partsData } = await supabase.from('participants').select('*');
-        
+        const [{ data: roomsData, error: roomsError }, { data: ideasData }, { data: partsData }, { data: ratingsData, error: ratingsError }] = await Promise.all([
+          supabase.from('rooms').select('*').order('created_at', { ascending: true }),
+          supabase.from('ideas').select('*').eq('room_id', activeRoomId),
+          supabase.from('participants').select('*').eq('room_id', activeRoomId),
+          supabase.from('idea_ratings').select('*').eq('session_id', activeRoomId)
+        ]);
+
+        if (!roomsError) {
+          let nextRooms = (roomsData || []).map(row => normalizeRoomRow(row));
+          if (nextRooms.length === 0) {
+            const room = defaultRoom();
+            await supabase.from('rooms').upsert({ id: room.id, name: room.name, participant_count: 0, idea_count: 0, created_at: room.createdAt, updated_at: room.updatedAt });
+            nextRooms = [room];
+          }
+          setRooms(nextRooms);
+        }
         setIdeas(ideasData || []);
         setParticipants((partsData || []).sort((a, b) => a.id.localeCompare(b.id)));
+        if (!ratingsError) setRatings((ratingsData || []).map(row => normalizeRatingRow(row, activeRoomId)));
         setDbConnected(true);
       } catch (err) {
         setDbConnected(false);
@@ -126,8 +239,8 @@ export default function App() {
 
     // Ideas Subscription
     const ideasChannel = supabase
-      .channel('ideas-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'ideas' }, (payload) => {
+      .channel(`ideas-changes-${activeRoomId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ideas', filter: `room_id=eq.${activeRoomId}` }, (payload) => {
         if (payload.eventType === 'INSERT') setIdeas(prev => prev.some(idea => idea.id === payload.new.id) ? prev : [...prev, payload.new as Idea]);
         else if (payload.eventType === 'UPDATE') setIdeas(prev => prev.map(id => id.id === payload.new.id ? payload.new as Idea : id));
         else if (payload.eventType === 'DELETE') setIdeas(prev => prev.filter(id => id.id !== payload.old.id));
@@ -136,27 +249,53 @@ export default function App() {
 
     // Participants Subscription
     const partsChannel = supabase
-      .channel('parts-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'participants' }, (payload) => {
+      .channel(`parts-changes-${activeRoomId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'participants', filter: `room_id=eq.${activeRoomId}` }, (payload) => {
         if (payload.eventType === 'INSERT') setParticipants(prev => prev.some(participant => participant.id === payload.new.id) ? prev : [...prev, payload.new as Participant].sort((a, b) => a.id.localeCompare(b.id)));
         else if (payload.eventType === 'UPDATE') setParticipants(prev => prev.map(p => p.id === payload.new.id ? payload.new as Participant : p).sort((a, b) => a.id.localeCompare(b.id)));
         else if (payload.eventType === 'DELETE') setParticipants(prev => prev.filter(p => p.id !== payload.old.id));
       })
       .subscribe();
 
+    const ratingsChannel = supabase
+      .channel(`idea-ratings-changes-${activeRoomId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'idea_ratings', filter: `session_id=eq.${activeRoomId}` }, payload => {
+        if (payload.eventType === 'DELETE') {
+          setRatings(previous => previous.filter(rating => !(rating.ideaId === payload.old.idea_id && rating.participantId === payload.old.participant_id)));
+          return;
+        }
+        const next = normalizeRatingRow(payload.new as Record<string, unknown>, activeRoomId);
+        setRatings(previous => [...previous.filter(rating => !(rating.ideaId === next.ideaId && rating.participantId === next.participantId)), next]);
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(ideasChannel);
       supabase.removeChannel(partsChannel);
+      supabase.removeChannel(ratingsChannel);
     };
-  }, [isConfigured]);
+  }, [activeRoomId, guideMode, isConfigured]);
 
-  // Persist local if not configured
+  // Persist the current room and update its history card.
   useEffect(() => {
-    if (!isConfigured && hasLoadedData) {
-      localStorage.setItem('spark-tank-ideas-local', JSON.stringify(ideas));
-      localStorage.setItem('spark-tank-participants-local', JSON.stringify(participants));
+    if (guideMode || !hasLoadedData) return;
+    const updatedAt = new Date().toISOString();
+    const nextRooms = rooms.map(room => room.id === activeRoomId
+      ? { ...room, participantCount: participants.length, ideaCount: ideas.length, updatedAt }
+      : room);
+    setRooms(previous => previous.map(room => room.id === activeRoomId
+      ? { ...room, participantCount: participants.length, ideaCount: ideas.length, updatedAt }
+      : room));
+
+    if (!isConfigured) {
+      localStorage.setItem(roomStorageKey(activeRoomId, 'ideas'), JSON.stringify(ideas));
+      localStorage.setItem(roomStorageKey(activeRoomId, 'participants'), JSON.stringify(participants));
+      localStorage.setItem(roomStorageKey(activeRoomId, 'ratings'), JSON.stringify(ratings));
+      localStorage.setItem(ROOMS_STORAGE_KEY, JSON.stringify(nextRooms));
+      return;
     }
-  }, [ideas, participants, isConfigured, hasLoadedData]);
+    void supabase.from('rooms').update({ participant_count: participants.length, idea_count: ideas.length, updated_at: updatedAt }).eq('id', activeRoomId);
+  }, [ideas, participants, ratings, activeRoomId, guideMode, isConfigured, hasLoadedData]);
 
   useEffect(() => {
     if (!activeParticipant) return;
@@ -164,6 +303,51 @@ export default function App() {
     if (!latestParticipant) setActiveParticipant(null);
     else if (latestParticipant !== activeParticipant) setActiveParticipant(latestParticipant);
   }, [participants, activeParticipant?.id]);
+
+  const switchRoom = (roomId: string) => {
+    if (roomId === activeRoomId) return;
+    setHasLoadedData(false);
+    setActiveParticipant(null);
+    setVotingIndex(0);
+    setCurrentScreen('LOBBY');
+    setActiveRoomId(roomId);
+    localStorage.setItem(ACTIVE_ROOM_STORAGE_KEY, roomId);
+  };
+
+  const createRoom = async () => {
+    const now = new Date().toISOString();
+    const room: RoomSummary = {
+      id: `room-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      name: `Room ${rooms.length + 1}`,
+      createdAt: now,
+      updatedAt: now,
+      participantCount: 0,
+      ideaCount: 0
+    };
+
+    if (isConfigured) {
+      const { error } = await supabase.from('rooms').insert({
+        id: room.id,
+        name: room.name,
+        participant_count: 0,
+        idea_count: 0,
+        created_at: room.createdAt,
+        updated_at: room.updatedAt
+      });
+      if (error) {
+        window.alert('Could not create the room. Apply the rooms migration, then try again.');
+        return;
+      }
+    } else {
+      localStorage.setItem(roomStorageKey(room.id, 'ideas'), '[]');
+      localStorage.setItem(roomStorageKey(room.id, 'participants'), '[]');
+      localStorage.setItem(roomStorageKey(room.id, 'ratings'), '[]');
+      localStorage.setItem(ROOMS_STORAGE_KEY, JSON.stringify([...rooms, room]));
+    }
+
+    setRooms(previous => [...previous, room]);
+    switchRoom(room.id);
+  };
 
   const addMember = async (name: string) => {
     const rosterIndex = participants.length;
@@ -177,14 +361,14 @@ export default function App() {
 
     setParticipants(prev => [...prev, newMember]);
     if (isConfigured) {
-      await supabase.from('participants').insert([newMember]);
+      await supabase.from('participants').insert([{ ...newMember, room_id: activeRoomId }]);
     }
   };
 
   const updateMember = async (updated: Participant) => {
     setParticipants(prev => prev.map(p => p.id === updated.id ? updated : p));
     if (isConfigured) {
-      await supabase.from('participants').update(updated).eq('id', updated.id);
+      await supabase.from('participants').update(updated).eq('id', updated.id).eq('room_id', activeRoomId);
     }
   };
 
@@ -198,13 +382,15 @@ export default function App() {
 
     if (isConfigured) {
       if (memberIdeas.length > 0) {
-        const { error: ideasError } = await supabase.from('ideas').delete().eq('ownerId', member.id);
+        await supabase.from('idea_ratings').delete().eq('session_id', activeRoomId).in('idea_id', memberIdeas.map(idea => idea.id));
+        const { error: ideasError } = await supabase.from('ideas').delete().eq('ownerId', member.id).eq('room_id', activeRoomId);
         if (ideasError) {
           window.alert(`Could not remove ${member.name}'s concepts. Please try again.`);
           return;
         }
       }
-      const { error: memberError } = await supabase.from('participants').delete().eq('id', member.id);
+      await supabase.from('idea_ratings').delete().eq('session_id', activeRoomId).eq('participant_id', member.id);
+      const { error: memberError } = await supabase.from('participants').delete().eq('id', member.id).eq('room_id', activeRoomId);
       if (memberError) {
         window.alert(`Could not remove ${member.name}. Please try again.`);
         return;
@@ -213,6 +399,7 @@ export default function App() {
 
     setIdeas(prev => prev.filter(idea => idea.ownerId !== member.id));
     setParticipants(prev => prev.filter(participant => participant.id !== member.id));
+    setRatings(prev => prev.filter(rating => rating.participantId !== member.id && !memberIdeas.some(idea => idea.id === rating.ideaId)));
     if (activeParticipant?.id === member.id) setActiveParticipant(null);
   };
 
@@ -238,72 +425,101 @@ export default function App() {
     
     setIdeas(prev => [...prev, newIdea]);
     if (isConfigured) {
-      await supabase.from('ideas').insert([newIdea]);
+      await supabase.from('ideas').insert([{ ...newIdea, room_id: activeRoomId }]);
     }
   };
 
   const removeIdea = async (id: string) => {
     setIdeas(prev => prev.filter(i => i.id !== id));
+    setRatings(prev => prev.filter(rating => rating.ideaId !== id));
     if (isConfigured) {
-      await supabase.from('ideas').delete().eq('id', id);
+      await supabase.from('idea_ratings').delete().eq('session_id', activeRoomId).eq('idea_id', id);
+      await supabase.from('ideas').delete().eq('id', id).eq('room_id', activeRoomId);
     }
   };
 
   const updateIdea = async (updatedIdea: Idea) => {
     setIdeas(prev => prev.map(id => id.id === updatedIdea.id ? updatedIdea : id));
     if (isConfigured) {
-      await supabase.from('ideas').update(updatedIdea).eq('id', updatedIdea.id);
+      await supabase.from('ideas').update(updatedIdea).eq('id', updatedIdea.id).eq('room_id', activeRoomId);
     }
   };
 
-  const handleDetailedVote = async (ideaId: string, scores: any, commentText: string) => {
+  const handleDetailedVote = async (ideaId: string, scores: Omit<IdeaRating, 'sessionId' | 'ideaId' | 'participantId' | 'comment' | 'updatedAt'>, commentText: string) => {
     if (!activeParticipant) return;
-    const ideaToUpdate = ideas.find(i => i.id === ideaId);
-    if (!ideaToUpdate) return;
-
-    const total = (scores.innovation + scores.viability + scores.execution) / 3;
-    const newComment = commentText ? { text: commentText, authorId: activeParticipant.id } : null;
-    
-    const updatedIdea = {
-      ...ideaToUpdate,
-      scores,
-      groupScore: total,
-      comments: newComment ? [...(ideaToUpdate.comments || []), newComment] : (ideaToUpdate.comments || [])
+    const rating: IdeaRating = {
+      sessionId: activeRoomId,
+      ideaId,
+      participantId: activeParticipant.id,
+      ...scores,
+      comment: commentText.trim() || undefined,
+      updatedAt: new Date().toISOString()
     };
 
+    setRatings(previous => [...previous.filter(item => !(item.ideaId === ideaId && item.participantId === activeParticipant.id)), rating]);
+
     if (isConfigured) {
-      await supabase.from('ideas').update(updatedIdea).eq('id', ideaId);
-    } else {
-      updateIdea(updatedIdea);
+      await supabase.from('idea_ratings').upsert({
+        session_id: rating.sessionId,
+        idea_id: rating.ideaId,
+        participant_id: rating.participantId,
+        problem: rating.problem,
+        market: rating.market,
+        differentiation: rating.differentiation,
+        feasibility: rating.feasibility,
+        comment: rating.comment || null,
+        updated_at: rating.updatedAt
+      }, { onConflict: 'session_id,idea_id,participant_id' });
     }
     
-    setVotingIndex(prev => (prev + 1) % battleIdeas.length);
+    setVotingIndex(prev => (prev + 1) % reviewIdeas.length);
   };
 
   const clearSession = async () => {
-    if (window.confirm("CRITICAL: This will permanently delete all shared data. Proceed?")) {
+    if (window.confirm(`Clear the ideas, ratings, and presentation results in ${activeRoom?.name || 'this room'}? Your other rooms and this roster will stay saved.`)) {
       if (isConfigured) {
         await Promise.all([
-          supabase.from('ideas').delete().neq('id', '0'),
-          supabase.from('presentation_progress').delete().eq('session_id', 'spark-tank-main'),
-          supabase.from('council_runs').delete().eq('session_id', 'spark-tank-main')
+          supabase.from('ideas').delete().eq('room_id', activeRoomId),
+          supabase.from('idea_ratings').delete().eq('session_id', activeRoomId),
+          supabase.from('presentation_progress').delete().eq('session_id', activeRoomId),
+          supabase.from('council_runs').delete().eq('session_id', activeRoomId)
         ]);
       } else {
         setIdeas([]);
       }
-      localStorage.removeItem('spark-tank-presentation-progress-v1');
-      localStorage.removeItem('spark-tank-council-run-v1');
+      localStorage.removeItem(`spark-tank-room:${activeRoomId}:presentation-progress`);
+      localStorage.removeItem(`spark-tank-room:${activeRoomId}:council-run`);
+      localStorage.removeItem(roomStorageKey(activeRoomId, 'ratings'));
+      setRatings([]);
       setVotingIndex(0);
       setCurrentScreen('LOBBY');
     }
   };
 
-  const battleIdeas = useMemo(() => {
-    return [...ideas].filter(i => i.title).sort((a, b) => a.id.localeCompare(b.id));
-  }, [ideas]);
+  const reviewIdeas = useMemo(() => [...ideas]
+    .filter(idea => idea.title)
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map(idea => {
+      const ideaRatings = ratings.filter(rating => rating.ideaId === idea.id);
+      if (ideaRatings.length === 0) return { ...idea, ratingCount: 0 };
+      const average = (field: 'problem' | 'market' | 'differentiation' | 'feasibility') => ideaRatings.reduce((sum, rating) => sum + rating[field], 0) / ideaRatings.length;
+      const scores = {
+        problem: average('problem'),
+        market: average('market'),
+        differentiation: average('differentiation'),
+        feasibility: average('feasibility')
+      };
+      return {
+        ...idea,
+        scores,
+        ratingCount: ideaRatings.length,
+        groupScore: (scores.problem + scores.market + scores.differentiation + scores.feasibility) / 4,
+        comments: ideaRatings.filter(rating => rating.comment).map(rating => ({ text: rating.comment!, authorId: rating.participantId }))
+      };
+    }), [ideas, ratings]);
 
   return (
-    <div className="app-shell">
+    <div className={cn("app-shell", guideMode && "guide-capture")}>
       <a href="#main-content" className="skip-link">Skip to workspace</a>
       <div className="bg-pattern-dots" aria-hidden="true" />
       <Header currentScreen={currentScreen} setCurrentScreen={setCurrentScreen} activeParticipant={activeParticipant} dbConnected={dbConnected} isConfigured={isConfigured} />
@@ -311,35 +527,36 @@ export default function App() {
       {!isConfigured && currentScreen === 'LOBBY' && (
         <div className="local-notice" role="status">
           <WifiOff className="w-4 h-4" />
-          <span>Local preview — Vercel uses the shared live roster.</span>
+          <span>Local preview — the deployed app can sync shared rooms.</span>
         </div>
       )}
 
       <main id="main-content" className="app-main">
         <AnimatePresence mode="wait">
           {currentScreen === 'LOBBY' && (
-            <Lobby key="lobby" onStart={() => activeParticipant && setCurrentScreen('BRAINSTORM')} activeParticipant={activeParticipant} onClaimSeat={setActiveParticipant} onReset={clearSession} hasData={ideas.length > 0} ideaCount={ideas.length} participants={participants} onAddMember={addMember} onUpdateMember={updateMember} onRemoveMember={removeMember} isLoading={!hasLoadedData} />
+            <Lobby key="lobby" rooms={rooms} activeRoomId={activeRoomId} onSwitchRoom={switchRoom} onCreateRoom={createRoom} onStart={() => activeParticipant && setCurrentScreen('BRAINSTORM')} activeParticipant={activeParticipant} onClaimSeat={setActiveParticipant} onReset={clearSession} hasData={ideas.length > 0} ideaCount={ideas.length} participants={participants} onAddMember={addMember} onUpdateMember={updateMember} onRemoveMember={removeMember} isLoading={!hasLoadedData} />
           )}
           {currentScreen === 'BRAINSTORM' && (
             <Brainstorm key="brainstorm" activeParticipant={activeParticipant} ideas={ideas.filter(i => i.ownerId === activeParticipant?.id)} onUpdateIdea={updateIdea} onAddIdea={addIdea} onRemoveIdea={removeIdea} />
           )}
           {currentScreen === 'VOTE' && (
-            <Vote key="vote" ideas={battleIdeas} currentIndex={votingIndex} onVote={handleDetailedVote} onNext={() => setVotingIndex(prev => (prev + 1) % battleIdeas.length)} onPrev={() => setVotingIndex(prev => (prev - 1 + battleIdeas.length) % battleIdeas.length)} participants={participants} />
-          )}
-          {currentScreen === 'PRESENT' && (
-            <Suspense key="present" fallback={<section className="presentation-empty" role="status"><BrainCircuit /><h2>Opening the decision room</h2><p>Loading the presentation controls and council workspace.</p></section>}>
-              <PresentationCouncil ideas={battleIdeas} participants={participants} isConfigured={isConfigured} onViewResults={() => setCurrentScreen('SUMMARY')} />
-            </Suspense>
+            <Vote key="vote" ideas={reviewIdeas} currentIndex={votingIndex} onVote={handleDetailedVote} onNext={() => setVotingIndex(prev => (prev + 1) % reviewIdeas.length)} onPrev={() => setVotingIndex(prev => (prev - 1 + reviewIdeas.length) % reviewIdeas.length)} participants={participants} ratings={ratings} activeParticipant={activeParticipant} />
           )}
           {currentScreen === 'SUMMARY' && (
-            <Summary key="summary" ideas={ideas} participants={participants} />
+            <Summary key="summary" ideas={reviewIdeas} participants={participants} />
           )}
         </AnimatePresence>
+
+        <div className={cn("council-surface", currentScreen !== 'PRESENT' && "is-background")} aria-hidden={currentScreen !== 'PRESENT'}>
+          <Suspense fallback={currentScreen === 'PRESENT' ? <section className="presentation-empty" role="status"><BrainCircuit /><h2>Opening the decision room</h2><p>Loading the presentation controls and council workspace.</p></section> : null}>
+            <PresentationCouncil key={activeRoomId} sessionId={activeRoomId} ideas={reviewIdeas} participants={participants} isConfigured={isConfigured} autoRun={!guideMode} demoMode={guideMode} onViewResults={() => setCurrentScreen('SUMMARY')} />
+          </Suspense>
+        </div>
       </main>
 
       <footer className="app-footer">
-        <div><Database className="w-3.5 h-3.5" /><span>{isConfigured ? 'Shared session' : 'Local session'}</span></div>
-        <span>SparkTank / 1.4</span>
+        <div><Database className="w-3.5 h-3.5" /><span>{isConfigured ? 'Shared room' : 'Local room'}</span></div>
+        <span>SparkTank / 1.5</span>
       </footer>
     </div>
   );
@@ -347,7 +564,7 @@ export default function App() {
 
 // --- LOBBY SCREEN ---
 
-function Lobby({ onStart, activeParticipant, onClaimSeat, onReset, hasData, ideaCount, participants, onAddMember, onUpdateMember, onRemoveMember, isLoading }: any) {
+function Lobby({ rooms, activeRoomId, onSwitchRoom, onCreateRoom, onStart, activeParticipant, onClaimSeat, onReset, hasData, ideaCount, participants, onAddMember, onUpdateMember, onRemoveMember, isLoading }: any) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [nameError, setNameError] = useState('');
@@ -362,6 +579,10 @@ function Lobby({ onStart, activeParticipant, onClaimSeat, onReset, hasData, idea
 
     if (!trimmedName) {
       setNameError('Enter a name first.');
+      return;
+    }
+    if (participants.length >= MAX_FRIENDS) {
+      setNameError('This session is full: four friends are already in.');
       return;
     }
     if (participants.some((participant: Participant) => participant.name.toLowerCase() === trimmedName.toLowerCase())) {
@@ -404,11 +625,27 @@ function Lobby({ onStart, activeParticipant, onClaimSeat, onReset, hasData, idea
       transition={{ type: 'spring', bounce: 0, duration: reduceMotion ? 0.01 : 0.36 }}
       className="lobby-screen"
     >
+      <div className="room-bar" aria-label="Saved rooms">
+        <div className="room-picker">
+          <label htmlFor="active-room">Saved room</label>
+          <div className="room-select-shell">
+            <select id="active-room" value={activeRoomId} onChange={(event) => onSwitchRoom(event.target.value)}>
+              {rooms.map((room: RoomSummary) => (
+                <option key={room.id} value={room.id}>{room.name} · {room.participantCount} friends · {room.ideaCount} ideas</option>
+              ))}
+            </select>
+            <ChevronRight aria-hidden="true" />
+          </div>
+        </div>
+        <p>Each room keeps its own friends, drafts, ratings, presentations, and council result.</p>
+        <button type="button" className="new-room-button" onClick={onCreateRoom}><Plus className="w-4 h-4" /> New room</button>
+      </div>
+
       <div className="lobby-hero">
         <div className="lobby-intro">
           <p className="lobby-kicker">{hasData ? 'Session restored' : 'Start a session'}</p>
           <h2>Set Your<br/><span>Roster</span></h2>
-          <p>Add each player by name, then choose yours to start drafting.</p>
+          <p>Add the four friends, then choose your own seat to start drafting.</p>
           <div className="session-readout" aria-label="Session summary">
             <div><strong>{participants.length}</strong><span>{participants.length === 1 ? 'person' : 'people'}</span></div>
             <div><strong>{ideaCount}</strong><span>{ideaCount === 1 ? 'concept' : 'concepts'}</span></div>
@@ -421,7 +658,7 @@ function Lobby({ onStart, activeParticipant, onClaimSeat, onReset, hasData, idea
             <div className="console-icon"><UserPlus className="w-5 h-5" /></div>
             <div>
               <h3>Add someone to the room</h3>
-              <p>Use the name they’ll recognize during voting.</p>
+              <p>Four friends share one room and one final scoreboard.</p>
             </div>
           </div>
           <label htmlFor="participant-name">Participant name</label>
@@ -431,6 +668,7 @@ function Lobby({ onStart, activeParticipant, onClaimSeat, onReset, hasData, idea
               type="text"
               value={newName}
               maxLength={40}
+              disabled={participants.length >= MAX_FRIENDS}
               onChange={(event) => {
                 setNewName(event.target.value);
                 if (nameError) setNameError('');
@@ -439,11 +677,11 @@ function Lobby({ onStart, activeParticipant, onClaimSeat, onReset, hasData, idea
               aria-invalid={Boolean(nameError)}
               aria-describedby={nameError ? 'participant-name-error' : 'participant-name-help'}
             />
-            <button type="submit" aria-label="Add person"><ArrowRight className="w-5 h-5" /></button>
+            <button type="submit" aria-label="Add person" disabled={participants.length >= MAX_FRIENDS}><ArrowRight className="w-5 h-5" /></button>
           </div>
           {nameError
             ? <p id="participant-name-error" className="field-message error-message"><AlertTriangle className="w-3.5 h-3.5" />{nameError}</p>
-            : <p id="participant-name-help" className="field-message">Press Enter to add another person.</p>
+            : <p id="participant-name-help" className="field-message">{participants.length >= MAX_FRIENDS ? 'All four seats are filled.' : 'Press Enter to add another friend.'}</p>
           }
         </form>
       </div>
@@ -454,7 +692,7 @@ function Lobby({ onStart, activeParticipant, onClaimSeat, onReset, hasData, idea
             <h3>Who’s in?</h3>
             <p>{activeParticipant ? `${activeParticipant.name} is ready to draft.` : 'Select your name when the roster is ready.'}</p>
           </div>
-          <span className="roster-count">{participants.length} / 12</span>
+          <span className="roster-count">{participants.length} / {MAX_FRIENDS}</span>
         </div>
 
         {isLoading ? (
@@ -646,34 +884,47 @@ function Brainstorm({ activeParticipant, ideas, onUpdateIdea, onAddIdea, onRemov
   );
 }
 
-function Vote({ ideas, currentIndex, onVote, onNext, onPrev, participants }: any) {
+function Vote({ ideas, currentIndex, onVote, onNext, onPrev, participants, ratings, activeParticipant }: any) {
   const currentIdea = ideas[currentIndex];
   const owner = participants.find((p: any) => p.id === currentIdea?.ownerId);
-  const [localScores, setLocalScores] = useState({ innovation: 3, viability: 3, execution: 3 });
+  const [localScores, setLocalScores] = useState({ problem: 3, market: 3, differentiation: 3, feasibility: 3 });
   const [comment, setComment] = useState("");
+  const currentRating = ratings.find((rating: IdeaRating) => rating.ideaId === currentIdea?.id && rating.participantId === activeParticipant?.id);
 
   const updateLocalScore = (param: string, val: number) => setLocalScores(prev => ({ ...prev, [param]: val }));
 
   useEffect(() => {
-    setLocalScores({ innovation: 3, viability: 3, execution: 3 });
-    setComment("");
-  }, [currentIndex]);
+    setLocalScores(currentRating ? {
+      problem: currentRating.problem,
+      market: currentRating.market,
+      differentiation: currentRating.differentiation,
+      feasibility: currentRating.feasibility
+    } : { problem: 3, market: 3, differentiation: 3, feasibility: 3 });
+    setComment(currentRating?.comment || "");
+  }, [currentIdea?.id, activeParticipant?.id, currentRating?.updatedAt]);
 
   if (!currentIdea) return (
     <div className="py-40 text-center space-y-6">
-       <div className="text-6xl grayscale opacity-30">⚔️</div>
+       <BarChart3 className="w-14 h-14 mx-auto text-slate-300" />
        <div className="space-y-2">
-         <h4 className="text-2xl font-heading uppercase text-slate-900">Global Battle Locked</h4>
-         <p className="text-slate-400 text-sm">Draft concepts across all laptops to begin the evaluation phase.</p>
+         <h4 className="text-2xl font-heading uppercase text-slate-900">Review is waiting for ideas</h4>
+         <p className="text-slate-500 text-sm">Give at least one draft a title, then return here to score the business.</p>
        </div>
     </div>
   );
 
+  const criteria = [
+    { id: 'problem', label: 'Problem value', icon: Target, desc: 'Is the pain real and urgent?' },
+    { id: 'market', label: 'Market potential', icon: TrendingUp, desc: 'Can this reach worthwhile demand?' },
+    { id: 'differentiation', label: 'Differentiation', icon: Sparkles, desc: 'Does the idea have a defendable edge?' },
+    { id: 'feasibility', label: 'Feasibility', icon: Workflow, desc: 'Can a small team launch and learn?' }
+  ];
+
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center space-y-10 py-2">
       <div className="text-center space-y-3">
-        <h2 className="text-4xl md:text-5xl font-heading uppercase text-slate-900">Battle <span className="text-slate-300">Arena</span></h2>
-        <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Global Real-time Evaluation</p>
+        <h2 className="text-4xl md:text-5xl font-heading uppercase text-slate-900">Review the <span className="text-slate-400">ideas</span></h2>
+        <p className="text-slate-500 text-sm">Score the business—not the speaker. Each friend submits one rating per idea.</p>
       </div>
       <div className="w-full flex items-start justify-center gap-8 max-w-7xl">
          <button onClick={onPrev} className="mt-40 w-12 h-12 rounded-lg border-2 border-slate-900 bg-white flex items-center justify-center shadow-[4px_4px_0_0_#0f172a] active:scale-95 shrink-0"><ChevronLeft className="w-5 h-5" /></button>
@@ -683,38 +934,41 @@ function Vote({ ideas, currentIndex, onVote, onNext, onPrev, participants }: any
                   <div className="flex justify-between items-center border-b border-slate-100 pb-4">
                      <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-lg border-2 border-slate-900 flex items-center justify-center text-2xl" style={{ backgroundColor: owner?.color }}>{owner?.mood}</div>
-                        <div><p className="text-[8px] font-black uppercase text-slate-300">Origin Node</p><h4 className="text-sm font-bold uppercase text-slate-900 leading-none">{owner?.name}</h4></div>
+                        <div><p className="text-[8px] font-black uppercase text-slate-400">Drafted by</p><h4 className="text-sm font-bold uppercase text-slate-900 leading-none">{owner?.name}</h4></div>
                      </div>
                      <span className="px-3 py-1 bg-slate-50 border border-slate-200 rounded text-[9px] font-bold uppercase">{currentIdea.category}</span>
                   </div>
                   <div className="space-y-6"><h3 className="text-4xl font-heading uppercase text-slate-900 leading-none">{currentIdea.title}</h3><p className="text-xl font-light text-slate-600 leading-snug">{currentIdea.pitch}</p></div>
                   <div className="grid grid-cols-2 gap-4">
-                     <div className="space-y-1"><p className="text-[8px] font-black uppercase text-slate-400">Market Friction</p><p className="text-xs text-slate-700 leading-relaxed">{currentIdea.problem}</p></div>
-                     <div className="space-y-1"><p className="text-[8px] font-black uppercase text-slate-400">Revenue Engine</p><p className="text-xs text-slate-700 leading-relaxed">{currentIdea.revenueModel}</p></div>
-                     <div className="space-y-1"><p className="text-[8px] font-black uppercase text-slate-400">Target Persona</p><p className="text-xs font-bold text-slate-900">{currentIdea.targetCustomer}</p></div>
+                     <div className="space-y-1"><p className="text-[8px] font-black uppercase text-slate-400">Problem</p><p className="text-xs text-slate-700 leading-relaxed">{currentIdea.problem || 'Not specified'}</p></div>
+                     <div className="space-y-1"><p className="text-[8px] font-black uppercase text-slate-400">Revenue model</p><p className="text-xs text-slate-700 leading-relaxed">{currentIdea.revenueModel || 'Not specified'}</p></div>
+                     <div className="space-y-1"><p className="text-[8px] font-black uppercase text-slate-400">First customer</p><p className="text-xs font-bold text-slate-900">{currentIdea.targetCustomer || 'Not specified'}</p></div>
                      <div className="space-y-1"><p className="text-[8px] font-black uppercase text-slate-400">Unfair Advantage</p><p className="text-xs text-slate-700 leading-relaxed">{currentIdea.unfairAdvantage}</p></div>
                   </div>
                   <div className="grid grid-cols-3 gap-3 pt-4 border-t border-slate-100">
-                     <div className="p-3 bg-slate-50 rounded-lg border border-slate-100"><p className="text-[7px] font-black uppercase text-slate-400">CapEx</p><p className="text-sm font-bold">{currentIdea.startupCost}</p></div>
-                     <div className="p-3 bg-slate-50 rounded-lg border border-slate-100"><p className="text-[7px] font-black uppercase text-slate-400">Timeline</p><p className="text-sm font-bold">{currentIdea.timeToLaunch}</p></div>
-                     <div className="p-3 bg-slate-50 rounded-lg border border-slate-100"><p className="text-[7px] font-black uppercase text-slate-400">TAM</p><p className="text-sm font-bold">{currentIdea.marketSize}</p></div>
+                     <div className="p-3 bg-slate-50 rounded-lg border border-slate-100"><p className="text-[7px] font-black uppercase text-slate-400">Starting cost</p><p className="text-sm font-bold">{currentIdea.startupCost || 'Unknown'}</p></div>
+                     <div className="p-3 bg-slate-50 rounded-lg border border-slate-100"><p className="text-[7px] font-black uppercase text-slate-400">Launch window</p><p className="text-sm font-bold">{currentIdea.timeToLaunch || 'Unknown'}</p></div>
+                     <div className="p-3 bg-slate-50 rounded-lg border border-slate-100"><p className="text-[7px] font-black uppercase text-slate-400">Market size</p><p className="text-sm font-bold">{currentIdea.marketSize}</p></div>
                   </div>
                </motion.div>
             </div>
             <div className="lg:col-span-5 space-y-6">
                <div className="panel-solid p-8 bg-white space-y-8 border-slate-300">
-                  <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-900 flex items-center gap-2"><Sparkles className="w-3 h-3" /> Grading Protocol</h4>
-                  {[{ id: 'innovation', label: 'Innovation', icon: Lightbulb, desc: 'Uniqueness & Creativity' }, { id: 'viability', label: 'Viability', icon: BarChart3, desc: 'Revenue & Market Fit' }, { id: 'execution', label: 'Execution', icon: Workflow, desc: 'Feasibility & Complexity' }].map(param => (
+                  <div className="flex items-start justify-between gap-4">
+                    <div><h4 className="text-sm font-black uppercase tracking-wide text-slate-900 flex items-center gap-2"><BarChart3 className="w-4 h-4" /> Idea scorecard</h4><p className="mt-1 text-xs text-slate-500">{currentIdea.ratingCount || 0} of {participants.length} friends rated</p></div>
+                    <span className="px-2 py-1 border border-slate-300 text-[9px] font-black uppercase">{activeParticipant?.name || 'Choose a seat'}</span>
+                  </div>
+                  {criteria.map(param => (
                     <div key={param.id} className="space-y-3">
-                       <div className="flex justify-between items-end"><div><p className="text-[11px] font-bold uppercase text-slate-900">{param.label}</p><p className="text-[8px] text-slate-400 uppercase font-black">{param.desc}</p></div><span className="text-lg font-heading text-slate-900">{(localScores as any)[param.id]}/5</span></div>
-                       <div className="flex gap-2">{[1,2,3,4,5].map(v => (<button key={v} onClick={() => updateLocalScore(param.id, v)} className={cn("flex-1 h-10 rounded border-2 transition-all font-heading text-sm", (localScores as any)[param.id] === v ? "bg-slate-900 border-slate-900 text-white" : "border-slate-100 hover:border-slate-300 text-slate-300")}>{v}</button>))}</div>
+                       <div className="flex justify-between items-end"><div><p className="text-[11px] font-bold uppercase text-slate-900 flex items-center gap-2">{React.createElement(param.icon, { className: 'w-3.5 h-3.5' })}{param.label}</p><p className="text-[10px] text-slate-500">{param.desc}</p></div><span className="text-lg font-heading text-slate-900">{(localScores as any)[param.id]}/5</span></div>
+                       <div className="flex gap-2">{[1,2,3,4,5].map(v => (<button type="button" aria-label={`${param.label}: ${v} out of 5`} key={v} onClick={() => updateLocalScore(param.id, v)} className={cn("flex-1 h-10 rounded border-2 transition-all font-heading text-sm", (localScores as any)[param.id] === v ? "bg-slate-900 border-slate-900 text-white" : "border-slate-200 hover:border-slate-500 text-slate-500")}>{v}</button>))}</div>
                     </div>
                   ))}
                   <div className="pt-4 space-y-3">
-                     <label className="text-[9px] font-black uppercase text-slate-400 flex items-center gap-2"><MessageSquare className="w-3 h-3" /> Strategist Comments (Optional)</label>
-                     <textarea value={comment} onChange={(e) => setComment(e.target.value)} className="w-full bg-slate-50 border-2 border-slate-100 rounded-lg p-4 text-xs min-h-[80px] resize-none focus:border-slate-900 outline-none transition-all" placeholder="Add specific strategic feedback..." />
+                     <label className="text-[9px] font-black uppercase text-slate-500 flex items-center gap-2"><MessageSquare className="w-3 h-3" /> Why did you score it this way? (optional)</label>
+                     <textarea value={comment} onChange={(e) => setComment(e.target.value)} className="w-full bg-slate-50 border-2 border-slate-200 rounded-lg p-4 text-xs min-h-[80px] resize-none focus:border-slate-900 outline-none transition-all" placeholder="Name the strongest evidence or biggest concern." />
                   </div>
-                  <button onClick={() => onVote(currentIdea.id, localScores, comment)} className="w-full btn-primary h-12 text-[11px]">Commit Grade <ChevronRight className="w-4 h-4" /></button>
+                  <button onClick={() => onVote(currentIdea.id, localScores, comment)} disabled={!activeParticipant} className="w-full btn-primary h-12 text-[11px]">{currentRating ? 'Update rating' : 'Save rating'} <ChevronRight className="w-4 h-4" /></button>
                </div>
             </div>
          </div>
@@ -733,10 +987,10 @@ function Summary({ ideas, participants }: any) {
 
   if (rankedIdeas.length === 0) return (
     <div className="py-40 text-center space-y-6">
-       <div className="text-6xl grayscale opacity-30">🏆</div>
+       <Trophy className="w-14 h-14 mx-auto text-slate-300" />
        <div className="space-y-2">
-         <h4 className="text-2xl font-heading uppercase text-slate-900">Summit Hub Unlocked</h4>
-         <p className="text-slate-400 text-sm">Finish evaluating concepts in the Battle Arena to generate the global audit.</p>
+         <h4 className="text-2xl font-heading uppercase text-slate-900">The scoreboard is waiting</h4>
+         <p className="text-slate-500 text-sm">Each friend should rate the ideas in Review before the ranking appears.</p>
        </div>
     </div>
   );
@@ -744,8 +998,8 @@ function Summary({ ideas, participants }: any) {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-24 py-4">
       <div className="text-center space-y-4">
-        <h2 className="text-5xl md:text-7xl font-heading uppercase text-slate-900">The <span className="text-slate-300">Summit</span></h2>
-        <p className="text-lg text-slate-400 font-light uppercase tracking-widest">Global Strategic Engineering Final Audit</p>
+        <h2 className="text-5xl md:text-7xl font-heading uppercase text-slate-900">Final <span className="text-slate-400">scoreboard</span></h2>
+        <p className="text-base text-slate-500">Human ratings averaged across problem value, market, differentiation, and feasibility.</p>
       </div>
       <div className="flex flex-col lg:flex-row items-end justify-center gap-8 pt-8 max-w-5xl mx-auto">
          {top3[1] && (
@@ -766,7 +1020,7 @@ function Summary({ ideas, participants }: any) {
                <div className="absolute -top-10 w-16 h-16 bg-[#0f172a] rounded flex items-center justify-center shadow-xl"><Trophy className="w-8 h-8 text-white" /></div>
                <div className="text-center pt-6">
                  <h4 className="text-3xl font-heading uppercase text-slate-900 leading-none">{top3[0].title}</h4>
-                 <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest mt-1">Supreme Concept</p>
+                 <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-1">Top-rated idea</p>
                </div>
                <div className="text-6xl font-heading text-slate-900">{(top3[0].groupScore || 0).toFixed(1)}</div>
              </div>
@@ -787,17 +1041,22 @@ function Summary({ ideas, participants }: any) {
       </div>
       <div className="space-y-12">
          <div className="flex justify-between items-end border-b-2 border-slate-900 pb-4 px-4">
-           <div className="flex items-center gap-4"><h3 className="text-2xl font-heading uppercase text-slate-900">Shared Session Audit</h3><span className="px-3 py-1 bg-slate-900 text-white rounded text-[8px] font-black uppercase tracking-widest">Global Sync</span></div>
-           <p className="text-[10px] font-bold uppercase text-slate-400">Updates instantly across all laptops</p>
+           <div className="flex items-center gap-4"><h3 className="text-2xl font-heading uppercase text-slate-900">Group scoreboard</h3><span className="px-3 py-1 bg-slate-900 text-white rounded text-[8px] font-black uppercase tracking-widest">Human scores</span></div>
+           <p className="text-[10px] font-bold uppercase text-slate-500">Click an idea for details and comments</p>
          </div>
          <div className="overflow-x-auto rounded-xl border-2 border-slate-900 bg-white shadow-sm overflow-hidden">
             <table className="w-full text-left">
               <thead>
                 <tr className="text-[9px] font-black uppercase tracking-widest text-slate-400 border-b-2 border-slate-900 bg-slate-50">
                   <th className="p-6">Rank</th>
-                  <th className="p-6">Concept Identity</th>
-                  <th className="p-6">Origin Node</th>
-                  <th className="p-6 text-right">Avg Grade</th>
+                  <th className="p-6">Idea</th>
+                  <th className="p-6">Presenter</th>
+                  <th className="p-4 text-center">Ratings</th>
+                  <th className="p-4 text-center">Problem</th>
+                  <th className="p-4 text-center">Market</th>
+                  <th className="p-4 text-center">Edge</th>
+                  <th className="p-4 text-center">Feasibility</th>
+                  <th className="p-6 text-right">Overall</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -814,6 +1073,11 @@ function Summary({ ideas, participants }: any) {
                         <span className="font-black uppercase text-[9px] tracking-tight">{participants.find((p: any) => p.id === idea.ownerId)?.name}</span>
                       </div>
                     </td>
+                    <td className="p-4 text-center"><span className="font-heading text-base">{idea.ratingCount || 0}/{participants.length}</span></td>
+                    <td className="p-4 text-center"><span className="font-heading text-base">{idea.scores?.problem?.toFixed(1) || '—'}</span></td>
+                    <td className="p-4 text-center"><span className="font-heading text-base">{idea.scores?.market?.toFixed(1) || '—'}</span></td>
+                    <td className="p-4 text-center"><span className="font-heading text-base">{idea.scores?.differentiation?.toFixed(1) || '—'}</span></td>
+                    <td className="p-4 text-center"><span className="font-heading text-base">{idea.scores?.feasibility?.toFixed(1) || '—'}</span></td>
                     <td className="p-6 text-right"><span className="text-3xl font-heading text-slate-900">{(idea.groupScore || 0).toFixed(1)}</span></td>
                   </tr>
                 ))}
@@ -827,7 +1091,7 @@ function Summary({ ideas, participants }: any) {
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white border-4 border-slate-900 rounded-[2.5rem] w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-[30px_30px_0_0_rgba(15,23,42,0.1)] flex flex-col">
               <div className="p-10 border-b-2 border-slate-900 flex justify-between items-start bg-slate-50">
                 <div className="space-y-4">
-                  <div className="flex items-center gap-3"><span className="px-3 py-1 bg-slate-900 text-white rounded-full text-[9px] font-black uppercase tracking-widest">Blueprint V1.2-MULTI</span><span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ID: {selectedIdea.id}</span></div>
+                  <div className="flex items-center gap-3"><span className="px-3 py-1 bg-slate-900 text-white rounded-full text-[9px] font-black uppercase tracking-widest">Idea review</span><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{selectedIdea.ratingCount || 0} ratings</span></div>
                   <h3 className="text-5xl font-heading uppercase text-slate-900 leading-none">{selectedIdea.title}</h3>
                 </div>
                 <button onClick={() => setSelectedIdea(null)} className="w-12 h-12 rounded-xl bg-white border-2 border-slate-900 flex items-center justify-center hover:bg-slate-900 hover:text-white transition-all shadow-[4px_4px_0_0_#0f172a]"><X className="w-6 h-6" /></button>
@@ -835,8 +1099,8 @@ function Summary({ ideas, participants }: any) {
               <div className="flex-grow overflow-y-auto p-12 space-y-12">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
                   <div className="space-y-8">
-                    <div className="space-y-2"><label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">The Core Narrative</label><p className="text-xl font-light leading-relaxed text-slate-700">{selectedIdea.pitch}</p></div>
-                    <div className="space-y-2"><label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Market Inefficiency</label><p className="text-sm leading-relaxed text-slate-600">{selectedIdea.problem}</p></div>
+                    <div className="space-y-2"><label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">One-line pitch</label><p className="text-xl font-light leading-relaxed text-slate-700">{selectedIdea.pitch}</p></div>
+                    <div className="space-y-2"><label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Problem</label><p className="text-sm leading-relaxed text-slate-600">{selectedIdea.problem}</p></div>
                     <div className="space-y-2"><label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Revenue Model</label><p className="text-sm leading-relaxed text-slate-600">{selectedIdea.revenueModel}</p></div>
                   </div>
                   <div className="space-y-8">
